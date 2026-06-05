@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   ArrowRight,
   AlignLeft,
@@ -28,6 +28,7 @@ import {
   updateLearningCard,
 } from '../model/learningGraph'
 import type { AiPatch, LearningStatus, PatchValidationResult } from '../model/types'
+import { loadLocalCanvasSnapshot, saveLocalCanvasSnapshot } from './localCanvasStore'
 
 const STORAGE_KEY = 'serenity:last-ai-context'
 
@@ -58,6 +59,8 @@ function copyText(text: string) {
 
 export function CanvasShell() {
   const [editor, setEditor] = useState<Editor | null>(null)
+  const saveTimerRef = useRef<number | null>(null)
+  const isLoadingSnapshotRef = useRef(false)
   const [inspector, setInspector] = useState<InspectorState | null>(null)
   const [contextText, setContextText] = useState('')
   const [patchText, setPatchText] = useState('')
@@ -76,9 +79,35 @@ export function CanvasShell() {
   const handleMount = useCallback((mountedEditor: Editor) => {
     setEditor(mountedEditor)
     mountedEditor.updateInstanceState({ isGridMode: true })
+
+    void (async () => {
+      isLoadingSnapshotRef.current = true
+      try {
+        const snapshot = await loadLocalCanvasSnapshot()
+        if (snapshot) {
+          mountedEditor.loadSnapshot(snapshot)
+          syncLearningCardText(mountedEditor)
+          refreshInspector(mountedEditor)
+        }
+      } catch {
+        showToast('本地画布读取失败，继续使用浏览器缓存')
+      } finally {
+        window.setTimeout(() => {
+          isLoadingSnapshotRef.current = false
+        }, 0)
+      }
+    })()
+
     mountedEditor.store.listen(() => {
       syncLearningCardText(mountedEditor)
       refreshInspector(mountedEditor)
+      if (isLoadingSnapshotRef.current) return
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = window.setTimeout(() => {
+        void saveLocalCanvasSnapshot(mountedEditor.getSnapshot()).catch(() => {
+          showToast('本地画布保存失败')
+        })
+      }, 800)
     })
     setTimeout(() => {
       syncLearningCardText(mountedEditor)
