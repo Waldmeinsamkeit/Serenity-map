@@ -41,6 +41,52 @@ serenity/
 npm install
 ```
 
+## 别人如何下载和使用
+
+如果你把这个项目上传到 GitHub 或其他 Git 仓库，别人使用时不需要下载 `node_modules/`。正确流程是：
+
+```bash
+git clone <你的仓库地址>
+cd serenity
+npm install
+npm run dev
+```
+
+Windows 下也可以在安装依赖后双击：
+
+```text
+start-serenity.bat
+```
+
+项目会优先打开：
+
+- 前端画布：`http://localhost:5173/`
+- 本地存储 API：`http://localhost:8787/`
+
+如果端口已被占用，启动脚本会自动选择新的可用端口，并在终端窗口里显示实际地址。
+
+需要提交到 Git 的是源码和配置，例如：
+
+- `package.json`
+- `package-lock.json`
+- `src/`
+- `scripts/`
+- `skills/`
+- `README.md`
+- `start-serenity.bat`
+- `vite.config.ts`
+
+不需要提交：
+
+- `node_modules/`
+- `dist/`
+- `.npm-cache/`
+- `store/`
+- `*.log`
+- `*.err`
+
+原因是 `node_modules/` 可以通过 `npm install` 自动恢复，`store/` 是每个用户自己的本地画布数据。
+
 ## 启动开发环境
 
 ```bash
