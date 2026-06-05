@@ -47,12 +47,14 @@ npm install
 npm run dev
 ```
 
+Windows 下也可以直接双击根目录的 `start-serenity.bat`。
+
 这个命令会同时启动：
 
-- Vite 前端服务，默认访问 `http://localhost:5173/`
-- 本地存储 API，默认监听 `http://localhost:8787/`
+- Vite 前端服务，优先使用 `http://localhost:5173/`
+- 本地存储 API，优先使用 `http://localhost:8787/`
 
-Vite 会把前端的 `/api` 请求代理到本地存储 API。
+如果端口已被占用，启动脚本会自动顺延选择可用端口，并在终端里打印实际地址。Vite 会把前端的 `/api` 请求代理到本地存储 API。
 
 ## 使用方式
 
