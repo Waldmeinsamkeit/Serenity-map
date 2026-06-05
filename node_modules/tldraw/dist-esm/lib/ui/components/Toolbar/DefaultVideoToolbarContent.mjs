@@ -1,0 +1,73 @@
+import { Fragment, jsx, jsxs } from "react/jsx-runtime";
+import { track, useEditor, useValue } from "@tldraw/editor";
+import { useCallback } from "react";
+import { useActions } from "../../context/actions.mjs";
+import { useUiEvents } from "../../context/events.mjs";
+import { useTranslation } from "../../hooks/useTranslation/useTranslation.mjs";
+import { TldrawUiButton } from "../primitives/Button/TldrawUiButton.mjs";
+import { TldrawUiButtonIcon } from "../primitives/Button/TldrawUiButtonIcon.mjs";
+import { TldrawUiToolbarButton } from "../primitives/TldrawUiToolbar.mjs";
+const DefaultVideoToolbarContent = track(function DefaultVideoToolbarContent2({
+  videoShapeId,
+  onEditAltTextStart
+}) {
+  const editor = useEditor();
+  const trackEvent = useUiEvents();
+  const msg = useTranslation();
+  const source = "video-toolbar";
+  const isReadonly = editor.getIsReadonly();
+  const actions = useActions();
+  const handleVideoReplace = useCallback(
+    () => actions["video-replace"].onSelect("video-toolbar"),
+    [actions]
+  );
+  const handleVideoDownload = useCallback(
+    () => actions["download-original"].onSelect("video-toolbar"),
+    [actions]
+  );
+  const altText = useValue(
+    "altText",
+    () => editor.getShape(videoShapeId).props.altText,
+    [editor, videoShapeId]
+  );
+  return /* @__PURE__ */ jsxs(Fragment, { children: [
+    !isReadonly && /* @__PURE__ */ jsx(
+      TldrawUiButton,
+      {
+        type: "icon",
+        title: msg("tool.replace-media"),
+        onClick: handleVideoReplace,
+        "data-testid": "tool.video-replace",
+        children: /* @__PURE__ */ jsx(TldrawUiButtonIcon, { small: true, icon: "tool-media" })
+      }
+    ),
+    /* @__PURE__ */ jsx(
+      TldrawUiButton,
+      {
+        type: "icon",
+        title: msg("action.download-original"),
+        onClick: handleVideoDownload,
+        "data-testid": "tool.video-download",
+        children: /* @__PURE__ */ jsx(TldrawUiButtonIcon, { small: true, icon: "download" })
+      }
+    ),
+    (altText || !isReadonly) && /* @__PURE__ */ jsx(
+      TldrawUiToolbarButton,
+      {
+        type: "icon",
+        isActive: !!altText,
+        title: msg("tool.media-alt-text"),
+        "data-testid": "tool.video-alt-text",
+        onClick: () => {
+          trackEvent("alt-text-start", { source });
+          onEditAltTextStart();
+        },
+        children: /* @__PURE__ */ jsx(TldrawUiButtonIcon, { small: true, icon: "alt" })
+      }
+    )
+  ] });
+});
+export {
+  DefaultVideoToolbarContent
+};
+//# sourceMappingURL=DefaultVideoToolbarContent.mjs.map

@@ -1,0 +1,27 @@
+import { EffectScheduler } from "@tldraw/state";
+import { debounce } from "@tldraw/utils";
+import * as React from "react";
+import { useContainer } from "./useContainer.mjs";
+import { useEditor } from "./useEditor.mjs";
+function useZoomCss() {
+  const editor = useEditor();
+  const container = useContainer();
+  React.useEffect(() => {
+    const setScale = (s) => container.style.setProperty("--tl-zoom", s.toString());
+    const setScaleDebounced = debounce(setScale, 100);
+    const scheduler = new EffectScheduler(
+      "useZoomCss",
+      () => setScale(editor.getEfficientZoomLevel())
+    );
+    scheduler.attach();
+    scheduler.execute();
+    return () => {
+      scheduler.detach();
+      setScaleDebounced.cancel();
+    };
+  }, [editor, container]);
+}
+export {
+  useZoomCss
+};
+//# sourceMappingURL=useZoomCss.mjs.map

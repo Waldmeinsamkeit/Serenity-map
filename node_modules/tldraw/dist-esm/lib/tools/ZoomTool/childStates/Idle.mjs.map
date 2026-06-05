@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../../../src/lib/tools/ZoomTool/childStates/Idle.ts"],
+  "sourcesContent": ["import { StateNode, TLKeyboardEventInfo, TLPointerEventInfo } from '@tldraw/editor'\n\nexport class Idle extends StateNode {\n\tstatic override id = 'idle'\n\n\tinfo = {} as TLPointerEventInfo & { onInteractionEnd?: string }\n\n\toverride onEnter(info: TLPointerEventInfo & { onInteractionEnd: string }) {\n\t\tthis.info = info\n\t}\n\n\toverride onPointerDown() {\n\t\tthis.parent.transition('pointing', this.info)\n\t}\n\n\toverride onKeyDown(info: TLKeyboardEventInfo) {\n\t\tif (info.key === 'Shift') {\n\t\t\tthis.parent.transition('zoom_quick', this.info)\n\t\t}\n\t}\n}\n"],
+  "mappings": "AAAA,SAAS,iBAA0D;AAE5D,MAAM,aAAa,UAAU;AAAA,EACnC,OAAgB,KAAK;AAAA,EAErB,OAAO,CAAC;AAAA,EAEC,QAAQ,MAAyD;AACzE,SAAK,OAAO;AAAA,EACb;AAAA,EAES,gBAAgB;AACxB,SAAK,OAAO,WAAW,YAAY,KAAK,IAAI;AAAA,EAC7C;AAAA,EAES,UAAU,MAA2B;AAC7C,QAAI,KAAK,QAAQ,SAAS;AACzB,WAAK,OAAO,WAAW,cAAc,KAAK,IAAI;AAAA,IAC/C;AAAA,EACD;AACD;",
+  "names": []
+}

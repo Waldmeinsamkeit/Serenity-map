@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../../../src/lib/ui/components/StylePanel/StylePanelSubheading.tsx"],
+  "sourcesContent": ["/** @public */\nexport interface StylePanelSubheadingProps {\n\tchildren: React.ReactNode\n}\n\n/** @public @react */\nexport function StylePanelSubheading({ children }: StylePanelSubheadingProps) {\n\treturn <h3 className=\"tlui-style-panel__subheading\">{children}</h3>\n}\n"],
+  "mappings": "AAOQ;AADD,SAAS,qBAAqB,EAAE,SAAS,GAA8B;AAC7E,SAAO,oBAAC,QAAG,WAAU,gCAAgC,UAAS;AAC/D;",
+  "names": []
+}

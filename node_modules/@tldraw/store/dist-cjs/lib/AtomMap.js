@@ -1,0 +1,409 @@
+"use strict";
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+var AtomMap_exports = {};
+__export(AtomMap_exports, {
+  AtomMap: () => AtomMap
+});
+module.exports = __toCommonJS(AtomMap_exports);
+var import_state = require("@tldraw/state");
+var import_utils = require("@tldraw/utils");
+var import_ImmutableMap = require("./ImmutableMap");
+class AtomMap {
+  /**
+   * Creates a new AtomMap instance.
+   *
+   * name - A unique name for this map, used for atom identification
+   * entries - Optional initial entries to populate the map with
+   * @example
+   * ```ts
+   * // Create an empty map
+   * const map = new AtomMap('userMap')
+   *
+   * // Create a map with initial data
+   * const initialData: [string, number][] = [['a', 1], ['b', 2]]
+   * const mapWithData = new AtomMap('numbersMap', initialData)
+   * ```
+   */
+  constructor(name, entries) {
+    this.name = name;
+    let atoms = (0, import_ImmutableMap.emptyMap)();
+    if (entries) {
+      atoms = atoms.withMutations((atoms2) => {
+        for (const [k, v] of entries) {
+          atoms2.set(k, (0, import_state.atom)(`${name}:${String(k)}`, v));
+        }
+      });
+    }
+    this.atoms = (0, import_state.atom)(`${name}:atoms`, atoms);
+  }
+  atoms;
+  /**
+   * Retrieves the underlying atom for a given key.
+   *
+   * @param key - The key to retrieve the atom for
+   * @returns The atom containing the value, or undefined if the key doesn't exist
+   * @internal
+   */
+  getAtom(key) {
+    const valueAtom = this.atoms.__unsafe__getWithoutCapture().get(key);
+    if (!valueAtom) {
+      this.atoms.get();
+      return void 0;
+    }
+    return valueAtom;
+  }
+  /**
+   * Gets the value associated with a key. Returns undefined if the key doesn't exist.
+   * This method is reactive and will cause reactive contexts to update when the value changes.
+   *
+   * @param key - The key to retrieve the value for
+   * @returns The value associated with the key, or undefined if not found
+   * @example
+   * ```ts
+   * const map = new AtomMap('myMap')
+   * map.set('name', 'Alice')
+   * console.log(map.get('name')) // 'Alice'
+   * console.log(map.get('missing')) // undefined
+   * ```
+   */
+  get(key) {
+    const value = this.getAtom(key)?.get();
+    (0, import_utils.assert)(value !== import_state.UNINITIALIZED);
+    return value;
+  }
+  /**
+   * Gets the value associated with a key without creating reactive dependencies.
+   * This method will not cause reactive contexts to update when the value changes.
+   *
+   * @param key - The key to retrieve the value for
+   * @returns The value associated with the key, or undefined if not found
+   * @example
+   * ```ts
+   * const map = new AtomMap('myMap')
+   * map.set('count', 42)
+   * const value = map.__unsafe__getWithoutCapture('count') // No reactive subscription
+   * ```
+   */
+  __unsafe__getWithoutCapture(key) {
+    const valueAtom = this.atoms.__unsafe__getWithoutCapture().get(key);
+    if (!valueAtom) return void 0;
+    const value = valueAtom.__unsafe__getWithoutCapture();
+    (0, import_utils.assert)(value !== import_state.UNINITIALIZED);
+    return value;
+  }
+  /**
+   * Checks whether a key exists in the map.
+   * This method is reactive and will cause reactive contexts to update when keys are added or removed.
+   *
+   * @param key - The key to check for
+   * @returns True if the key exists in the map, false otherwise
+   * @example
+   * ```ts
+   * const map = new AtomMap('myMap')
+   * console.log(map.has('name')) // false
+   * map.set('name', 'Alice')
+   * console.log(map.has('name')) // true
+   * ```
+   */
+  has(key) {
+    const valueAtom = this.getAtom(key);
+    if (!valueAtom) {
+      return false;
+    }
+    return valueAtom.get() !== import_state.UNINITIALIZED;
+  }
+  /**
+   * Checks whether a key exists in the map without creating reactive dependencies.
+   * This method will not cause reactive contexts to update when keys are added or removed.
+   *
+   * @param key - The key to check for
+   * @returns True if the key exists in the map, false otherwise
+   * @example
+   * ```ts
+   * const map = new AtomMap('myMap')
+   * map.set('active', true)
+   * const exists = map.__unsafe__hasWithoutCapture('active') // No reactive subscription
+   * ```
+   */
+  __unsafe__hasWithoutCapture(key) {
+    const valueAtom = this.atoms.__unsafe__getWithoutCapture().get(key);
+    if (!valueAtom) return false;
+    (0, import_utils.assert)(valueAtom.__unsafe__getWithoutCapture() !== import_state.UNINITIALIZED);
+    return true;
+  }
+  /**
+   * Sets a value for the given key. If the key already exists, its value is updated.
+   * If the key doesn't exist, a new entry is created.
+   *
+   * @param key - The key to set the value for
+   * @param value - The value to associate with the key
+   * @returns This AtomMap instance for method chaining
+   * @example
+   * ```ts
+   * const map = new AtomMap('myMap')
+   * map.set('name', 'Alice').set('age', 30)
+   * ```
+   */
+  set(key, value) {
+    const existingAtom = this.atoms.__unsafe__getWithoutCapture().get(key);
+    if (existingAtom) {
+      existingAtom.set(value);
+    } else {
+      this.atoms.update((atoms) => {
+        return atoms.set(key, (0, import_state.atom)(`${this.name}:${String(key)}`, value));
+      });
+    }
+    return this;
+  }
+  /**
+   * Updates an existing value using an updater function.
+   *
+   * @param key - The key of the value to update
+   * @param updater - A function that receives the current value and returns the new value
+   * @throws Error if the key doesn't exist in the map
+   * @example
+   * ```ts
+   * const map = new AtomMap('myMap')
+   * map.set('count', 5)
+   * map.update('count', count => count + 1) // count is now 6
+   * ```
+   */
+  update(key, updater) {
+    const valueAtom = this.atoms.__unsafe__getWithoutCapture().get(key);
+    if (!valueAtom) {
+      throw new Error(`AtomMap: key ${key} not found`);
+    }
+    const value = valueAtom.__unsafe__getWithoutCapture();
+    (0, import_utils.assert)(value !== import_state.UNINITIALIZED);
+    valueAtom.set(updater(value));
+  }
+  /**
+   * Removes a key-value pair from the map.
+   *
+   * @param key - The key to remove
+   * @returns True if the key existed and was removed, false if it didn't exist
+   * @example
+   * ```ts
+   * const map = new AtomMap('myMap')
+   * map.set('temp', 'value')
+   * console.log(map.delete('temp')) // true
+   * console.log(map.delete('missing')) // false
+   * ```
+   */
+  delete(key) {
+    const valueAtom = this.atoms.__unsafe__getWithoutCapture().get(key);
+    if (!valueAtom) {
+      return false;
+    }
+    (0, import_state.transact)(() => {
+      valueAtom.set(import_state.UNINITIALIZED);
+      this.atoms.update((atoms) => {
+        return atoms.delete(key);
+      });
+    });
+    return true;
+  }
+  /**
+   * Removes multiple key-value pairs from the map in a single transaction.
+   *
+   * @param keys - An iterable of keys to remove
+   * @returns An array of [key, value] pairs that were actually deleted
+   * @example
+   * ```ts
+   * const map = new AtomMap('myMap')
+   * map.set('a', 1).set('b', 2).set('c', 3)
+   * const deleted = map.deleteMany(['a', 'c', 'missing'])
+   * console.log(deleted) // [['a', 1], ['c', 3]]
+   * ```
+   */
+  deleteMany(keys) {
+    return (0, import_state.transact)(() => {
+      const deleted = [];
+      const newAtoms = this.atoms.get().withMutations((atoms) => {
+        for (const key of keys) {
+          const valueAtom = atoms.get(key);
+          if (!valueAtom) continue;
+          const oldValue = valueAtom.get();
+          (0, import_utils.assert)(oldValue !== import_state.UNINITIALIZED);
+          deleted.push([key, oldValue]);
+          atoms.delete(key);
+          valueAtom.set(import_state.UNINITIALIZED);
+        }
+      });
+      if (deleted.length) {
+        this.atoms.set(newAtoms);
+      }
+      return deleted;
+    });
+  }
+  /**
+   * Removes all key-value pairs from the map.
+   *
+   * @example
+   * ```ts
+   * const map = new AtomMap('myMap')
+   * map.set('a', 1).set('b', 2)
+   * map.clear()
+   * console.log(map.size) // 0
+   * ```
+   */
+  clear() {
+    return (0, import_state.transact)(() => {
+      for (const valueAtom of this.atoms.__unsafe__getWithoutCapture().values()) {
+        valueAtom.set(import_state.UNINITIALIZED);
+      }
+      this.atoms.set((0, import_ImmutableMap.emptyMap)());
+    });
+  }
+  /**
+   * Returns an iterator that yields [key, value] pairs for each entry in the map.
+   * This method is reactive and will cause reactive contexts to update when entries change.
+   *
+   * @returns A generator that yields [key, value] tuples
+   * @example
+   * ```ts
+   * const map = new AtomMap('myMap')
+   * map.set('a', 1).set('b', 2)
+   * for (const [key, value] of map.entries()) {
+   *   console.log(`${key}: ${value}`)
+   * }
+   * ```
+   */
+  *entries() {
+    for (const [key, valueAtom] of this.atoms.get()) {
+      const value = valueAtom.get();
+      (0, import_utils.assert)(value !== import_state.UNINITIALIZED);
+      yield [key, value];
+    }
+  }
+  /**
+   * Returns an iterator that yields all keys in the map.
+   * This method is reactive and will cause reactive contexts to update when keys change.
+   *
+   * @returns A generator that yields keys
+   * @example
+   * ```ts
+   * const map = new AtomMap('myMap')
+   * map.set('name', 'Alice').set('age', 30)
+   * for (const key of map.keys()) {
+   *   console.log(key) // 'name', 'age'
+   * }
+   * ```
+   */
+  *keys() {
+    for (const key of this.atoms.get().keys()) {
+      yield key;
+    }
+  }
+  /**
+   * Returns an iterator that yields all values in the map.
+   * This method is reactive and will cause reactive contexts to update when values change.
+   *
+   * @returns A generator that yields values
+   * @example
+   * ```ts
+   * const map = new AtomMap('myMap')
+   * map.set('name', 'Alice').set('age', 30)
+   * for (const value of map.values()) {
+   *   console.log(value) // 'Alice', 30
+   * }
+   * ```
+   */
+  *values() {
+    for (const valueAtom of this.atoms.get().values()) {
+      const value = valueAtom.get();
+      (0, import_utils.assert)(value !== import_state.UNINITIALIZED);
+      yield value;
+    }
+  }
+  /**
+   * The number of key-value pairs in the map.
+   * This property is reactive and will cause reactive contexts to update when the size changes.
+   *
+   * @returns The number of entries in the map
+   * @example
+   * ```ts
+   * const map = new AtomMap('myMap')
+   * console.log(map.size) // 0
+   * map.set('a', 1)
+   * console.log(map.size) // 1
+   * ```
+   */
+  // eslint-disable-next-line no-restricted-syntax
+  get size() {
+    return this.atoms.get().size;
+  }
+  /**
+   * Executes a provided function once for each key-value pair in the map.
+   * This method is reactive and will cause reactive contexts to update when entries change.
+   *
+   * @param callbackfn - Function to execute for each entry
+   *   - value - The value of the current entry
+   *   - key - The key of the current entry
+   *   - map - The AtomMap being traversed
+   * @param thisArg - Value to use as `this` when executing the callback
+   * @example
+   * ```ts
+   * const map = new AtomMap('myMap')
+   * map.set('a', 1).set('b', 2)
+   * map.forEach((value, key) => {
+   *   console.log(`${key} = ${value}`)
+   * })
+   * ```
+   */
+  forEach(callbackfn, thisArg) {
+    for (const [key, value] of this.entries()) {
+      callbackfn.call(thisArg, value, key, this);
+    }
+  }
+  /**
+   * Returns the default iterator for the map, which is the same as entries().
+   * This allows the map to be used in for...of loops and other iterable contexts.
+   *
+   * @returns The same iterator as entries()
+   * @example
+   * ```ts
+   * const map = new AtomMap('myMap')
+   * map.set('a', 1).set('b', 2)
+   *
+   * // These are equivalent:
+   * for (const [key, value] of map) {
+   *   console.log(`${key}: ${value}`)
+   * }
+   *
+   * for (const [key, value] of map.entries()) {
+   *   console.log(`${key}: ${value}`)
+   * }
+   * ```
+   */
+  [Symbol.iterator]() {
+    return this.entries();
+  }
+  /**
+   * The string tag used by Object.prototype.toString for this class.
+   *
+   * @example
+   * ```ts
+   * const map = new AtomMap('myMap')
+   * console.log(Object.prototype.toString.call(map)) // '[object AtomMap]'
+   * ```
+   */
+  [Symbol.toStringTag] = "AtomMap";
+}
+//# sourceMappingURL=AtomMap.js.map

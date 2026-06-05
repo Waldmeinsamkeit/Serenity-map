@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/lib/url.ts"],
+  "sourcesContent": ["/**\n * Safely parses a URL string without throwing exceptions on invalid input.\n * Returns a URL object for valid URLs or undefined for invalid ones.\n *\n * @param url - The URL string to parse\n * @param baseUrl - Optional base URL to resolve relative URLs against\n * @returns A URL object if parsing succeeds, undefined if it fails\n *\n * @example\n * ```ts\n * // Valid absolute URL\n * const url1 = safeParseUrl('https://example.com')\n * if (url1) {\n *   console.log(`Valid URL: ${url1.href}`) // \"Valid URL: https://example.com/\"\n * }\n *\n * // Invalid URL\n * const url2 = safeParseUrl('not-a-url')\n * console.log(url2) // undefined\n *\n * // Relative URL with base\n * const url3 = safeParseUrl('/path', 'https://example.com')\n * if (url3) {\n *   console.log(url3.href) // \"https://example.com/path\"\n * }\n *\n * // Error handling\n * function handleUserUrl(input: string) {\n *   const url = safeParseUrl(input)\n *   if (url) {\n *     return url\n *   } else {\n *     console.log('Invalid URL provided')\n *     return null\n *   }\n * }\n * ```\n *\n * @public\n */\nexport const safeParseUrl = (url: string, baseUrl?: string | URL) => {\n\ttry {\n\t\treturn new URL(url, baseUrl)\n\t} catch {\n\t\treturn\n\t}\n}\n"],
+  "mappings": ";;;;;;;;;;;;;;;;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAwCO,MAAM,eAAe,CAAC,KAAa,YAA2B;AACpE,MAAI;AACH,WAAO,IAAI,IAAI,KAAK,OAAO;AAAA,EAC5B,QAAQ;AACP;AAAA,EACD;AACD;",
+  "names": []
+}

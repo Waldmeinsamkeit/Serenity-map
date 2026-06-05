@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../../../src/lib/tools/LaserTool/childStates/Idle.ts"],
+  "sourcesContent": ["import { StateNode } from '@tldraw/editor'\nimport { LaserTool } from '../LaserTool'\n\nexport class Idle extends StateNode {\n\tstatic override id = 'idle'\n\n\toverride onPointerDown() {\n\t\t// Get or create the shared laser session from the parent tool\n\t\tconst sessionId = (this.parent as LaserTool).getSessionId()\n\t\tconst scribble = this.editor.scribbles.addScribbleToSession(sessionId, {\n\t\t\tcolor: 'laser',\n\t\t\topacity: 0.7,\n\t\t\tsize: 4,\n\t\t\ttaper: false,\n\t\t})\n\t\tthis.parent.transition('lasering', { sessionId, scribbleId: scribble.id })\n\t}\n}\n"],
+  "mappings": "AAAA,SAAS,iBAAiB;AAGnB,MAAM,aAAa,UAAU;AAAA,EACnC,OAAgB,KAAK;AAAA,EAEZ,gBAAgB;AAExB,UAAM,YAAa,KAAK,OAAqB,aAAa;AAC1D,UAAM,WAAW,KAAK,OAAO,UAAU,qBAAqB,WAAW;AAAA,MACtE,OAAO;AAAA,MACP,SAAS;AAAA,MACT,MAAM;AAAA,MACN,OAAO;AAAA,IACR,CAAC;AACD,SAAK,OAAO,WAAW,YAAY,EAAE,WAAW,YAAY,SAAS,GAAG,CAAC;AAAA,EAC1E;AACD;",
+  "names": []
+}

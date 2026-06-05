@@ -1,0 +1,44 @@
+import {
+  FileHelpers,
+  exhaustiveSwitchError
+} from "@tldraw/editor";
+import {
+  clipboardWrite,
+  doesClipboardSupportType,
+  getAdditionalClipboardWriteType
+} from "../clipboard.mjs";
+import { exportToImagePromiseForClipboard } from "./export.mjs";
+function copyAs(editor, ids, opts) {
+  if (!navigator.clipboard) return Promise.reject(new Error("Copy not supported"));
+  if (navigator.clipboard.write) {
+    const { blobPromise, mimeType } = exportToImagePromiseForClipboard(editor, ids, opts);
+    const types = { [mimeType]: blobPromise };
+    const additionalMimeType = getAdditionalClipboardWriteType(opts.format);
+    if (additionalMimeType && doesClipboardSupportType(additionalMimeType)) {
+      types[additionalMimeType] = blobPromise.then(
+        (blob) => FileHelpers.rewriteMimeType(blob, additionalMimeType)
+      );
+    }
+    return clipboardWrite(types);
+  }
+  switch (opts.format) {
+    case "svg": {
+      return fallbackWriteTextAsync(async () => {
+        const result = await editor.getSvgString(ids, opts);
+        if (!result) throw new Error("Failed to copy");
+        return result.svg;
+      });
+    }
+    case "png":
+      throw new Error("Copy not supported");
+    default:
+      exhaustiveSwitchError(opts.format);
+  }
+}
+async function fallbackWriteTextAsync(getText) {
+  await navigator.clipboard?.writeText?.(await getText());
+}
+export {
+  copyAs
+};
+//# sourceMappingURL=copyAs.mjs.map

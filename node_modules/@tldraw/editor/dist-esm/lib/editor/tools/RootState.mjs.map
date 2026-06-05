@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../../src/lib/editor/tools/RootState.ts"],
+  "sourcesContent": ["import { StateNode } from './StateNode'\n\nexport class RootState extends StateNode {\n\tstatic override id = 'root'\n\tstatic override initial = ''\n\tstatic override children() {\n\t\treturn []\n\t}\n}\n"],
+  "mappings": "AAAA,SAAS,iBAAiB;AAEnB,MAAM,kBAAkB,UAAU;AAAA,EACxC,OAAgB,KAAK;AAAA,EACrB,OAAgB,UAAU;AAAA,EAC1B,OAAgB,WAAW;AAC1B,WAAO,CAAC;AAAA,EACT;AACD;",
+  "names": []
+}

@@ -1,0 +1,111 @@
+import {
+  Extension,
+  extensions,
+  generateHTML,
+  generateJSON,
+  generateText
+} from "@tiptap/core";
+import { Code } from "@tiptap/extension-code";
+import { Highlight } from "@tiptap/extension-highlight";
+import { StarterKit } from "@tiptap/starter-kit";
+import {
+  getOwnProperty,
+  WeakCache
+} from "@tldraw/editor";
+import { DefaultFontFaces } from "../../shapes/shared/defaultFonts.mjs";
+const KeyboardShiftEnterTweakExtension = Extension.create({
+  name: "keyboardShiftEnterHandler",
+  addKeyboardShortcuts() {
+    return {
+      // We don't support soft breaks, so we just use the default enter command.
+      "Shift-Enter": ({ editor }) => editor.commands.enter()
+    };
+  }
+});
+Code.config.excludes = void 0;
+Highlight.config.priority = 1100;
+const tipTapDefaultExtensions = [
+  StarterKit.configure({
+    blockquote: false,
+    codeBlock: false,
+    horizontalRule: false,
+    link: {
+      openOnClick: false,
+      autolink: true
+    },
+    // Prevent trailing paragraph insertion after lists (fixes #7641)
+    trailingNode: {
+      notAfter: ["paragraph", "bulletList", "orderedList", "listItem"]
+    }
+  }),
+  Highlight,
+  KeyboardShiftEnterTweakExtension,
+  // N.B. We disable the text direction core extension in RichTextArea,
+  // but we add it back in again here in our own extensions list so that
+  // people can omit/override it if they want to.
+  extensions.TextDirection.configure({ direction: "auto" })
+];
+const htmlCache = new WeakCache();
+function renderHtmlFromRichText(editor, richText) {
+  return htmlCache.get(richText, () => {
+    const tipTapExtensions = editor.getTextOptions().tipTapConfig?.extensions ?? tipTapDefaultExtensions;
+    const html = generateHTML(richText, tipTapExtensions);
+    return html.replaceAll('<p dir="auto"></p>', "<p><br /></p>") ?? "";
+  });
+}
+function renderHtmlFromRichTextForMeasurement(editor, richText) {
+  const html = renderHtmlFromRichText(editor, richText);
+  return `<div class="tl-rich-text">${html}</div>`;
+}
+const plainTextFromRichTextCache = new WeakCache();
+function isEmptyRichText(richText) {
+  if (richText.content.length === 1) {
+    if (!richText.content[0].content) return true;
+  }
+  return false;
+}
+function renderPlaintextFromRichText(editor, richText) {
+  if (isEmptyRichText(richText)) return "";
+  return plainTextFromRichTextCache.get(richText, () => {
+    const tipTapExtensions = editor.getTextOptions().tipTapConfig?.extensions ?? tipTapDefaultExtensions;
+    return generateText(richText, tipTapExtensions, {
+      blockSeparator: "\n"
+    });
+  });
+}
+function renderRichTextFromHTML(editor, html) {
+  const tipTapExtensions = editor.getTextOptions().tipTapConfig?.extensions ?? tipTapDefaultExtensions;
+  return generateJSON(html, tipTapExtensions);
+}
+function defaultAddFontsFromNode(node, state, addFont) {
+  for (const mark of node.marks) {
+    if (mark.type.name === "bold" && state.weight !== "bold") {
+      state = { ...state, weight: "bold" };
+    }
+    if (mark.type.name === "italic" && state.style !== "italic") {
+      state = { ...state, style: "italic" };
+    }
+    if (mark.type.name === "code" && state.family !== "tldraw_mono") {
+      state = { ...state, family: "tldraw_mono" };
+    }
+  }
+  const fontsForFamily = getOwnProperty(DefaultFontFaces, state.family);
+  if (!fontsForFamily) return state;
+  const fontsForStyle = getOwnProperty(fontsForFamily, state.style);
+  if (!fontsForStyle) return state;
+  const fontsForWeight = getOwnProperty(fontsForStyle, state.weight);
+  if (!fontsForWeight) return state;
+  addFont(fontsForWeight);
+  return state;
+}
+export {
+  KeyboardShiftEnterTweakExtension,
+  defaultAddFontsFromNode,
+  isEmptyRichText,
+  renderHtmlFromRichText,
+  renderHtmlFromRichTextForMeasurement,
+  renderPlaintextFromRichText,
+  renderRichTextFromHTML,
+  tipTapDefaultExtensions
+};
+//# sourceMappingURL=richText.mjs.map

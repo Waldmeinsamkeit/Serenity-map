@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../src/lib/hooks/useStateAttribute.ts"],
+  "sourcesContent": ["import { react } from '@tldraw/state'\nimport { useLayoutEffect } from 'react'\nimport { useEditor } from './useEditor'\n\nexport function useStateAttribute() {\n\tconst editor = useEditor()\n\n\t// we use a layout effect because we don't want there to be any perceptible delay between the\n\t// editor mounting and this attribute being applied, because styles may depend on it:\n\tuseLayoutEffect(() => {\n\t\treturn react('stateAttribute', () => {\n\t\t\tconst container = editor.getContainer()\n\t\t\tconst instanceState = editor.getInstanceState()\n\t\t\tcontainer.setAttribute('data-state', editor.getPath())\n\t\t\tcontainer.setAttribute('data-coarse', String(instanceState.isCoarsePointer))\n\t\t})\n\t}, [editor])\n}\n"],
+  "mappings": "AAAA,SAAS,aAAa;AACtB,SAAS,uBAAuB;AAChC,SAAS,iBAAiB;AAEnB,SAAS,oBAAoB;AACnC,QAAM,SAAS,UAAU;AAIzB,kBAAgB,MAAM;AACrB,WAAO,MAAM,kBAAkB,MAAM;AACpC,YAAM,YAAY,OAAO,aAAa;AACtC,YAAM,gBAAgB,OAAO,iBAAiB;AAC9C,gBAAU,aAAa,cAAc,OAAO,QAAQ,CAAC;AACrD,gBAAU,aAAa,eAAe,OAAO,cAAc,eAAe,CAAC;AAAA,IAC5E,CAAC;AAAA,EACF,GAAG,CAAC,MAAM,CAAC;AACZ;",
+  "names": []
+}

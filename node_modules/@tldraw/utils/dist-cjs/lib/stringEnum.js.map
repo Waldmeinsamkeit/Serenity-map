@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/lib/stringEnum.ts"],
+  "sourcesContent": ["/**\n * Creates an enum-like object from string values where each key maps to itself.\n * Useful for creating string constant objects with type safety and autocompletion.\n * @param values - The string values to create the enum from.\n * @returns An object where each provided string is both the key and value.\n * @example\n * ```ts\n * const Colors = stringEnum('red', 'green', 'blue')\n * // Results in: { red: 'red', green: 'green', blue: 'blue' }\n *\n * // Type-safe usage\n * function setColor(color: keyof typeof Colors) {\n *   console.log(`Setting color to ${Colors[color]}`)\n * }\n *\n * setColor('red') // \u2713 Valid\n * setColor('yellow') // \u2717 TypeScript error\n * ```\n * @internal\n */\nexport function stringEnum<T extends string>(...values: T[]): { [K in T]: K } {\n\tconst obj = {} as { [K in T]: K }\n\tfor (const value of values) {\n\t\tobj[value] = value\n\t}\n\treturn obj\n}\n"],
+  "mappings": ";;;;;;;;;;;;;;;;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAoBO,SAAS,cAAgC,QAA8B;AAC7E,QAAM,MAAM,CAAC;AACb,aAAW,SAAS,QAAQ;AAC3B,QAAI,KAAK,IAAI;AAAA,EACd;AACA,SAAO;AACR;",
+  "names": []
+}

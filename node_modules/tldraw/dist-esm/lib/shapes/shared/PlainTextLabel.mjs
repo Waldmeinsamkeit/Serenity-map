@@ -1,0 +1,99 @@
+import { jsx, jsxs } from "react/jsx-runtime";
+import classNames from "classnames";
+import React from "react";
+import { PlainTextArea } from "../text/PlainTextArea.mjs";
+import { TextHelpers } from "./TextHelpers.mjs";
+import { isLegacyAlign } from "./legacyProps.mjs";
+import { useEditablePlainText } from "./useEditablePlainText.mjs";
+const PlainTextLabel = React.memo(function PlainTextLabel2({
+  shapeId,
+  type,
+  text: plaintext,
+  labelColor,
+  font,
+  fontSize,
+  lineHeight,
+  align,
+  verticalAlign,
+  wrap,
+  isSelected,
+  padding = 0,
+  onKeyDown: handleKeyDownCustom,
+  classNamePrefix,
+  style,
+  textWidth,
+  textHeight,
+  showTextOutline = true
+}) {
+  const { rInput, isEmpty, isEditing, isReadyForEditing, ...editableTextRest } = useEditablePlainText(shapeId, type, plaintext);
+  const finalPlainText = TextHelpers.normalizeTextForDom(plaintext || "");
+  const hasText = finalPlainText.length > 0;
+  const legacyAlign = isLegacyAlign(align);
+  if (!isEditing && !hasText) {
+    return null;
+  }
+  const cssPrefix = classNamePrefix || "tl-text";
+  return /* @__PURE__ */ jsx(
+    "div",
+    {
+      className: `${cssPrefix}-label tl-text-wrapper tl-plain-text-wrapper`,
+      "aria-hidden": !isEditing,
+      "data-font": font,
+      "data-align": align,
+      "data-hastext": !isEmpty,
+      "data-isediting": isEditing,
+      "data-is-ready-for-editing": isReadyForEditing,
+      "data-textwrap": !!wrap,
+      "data-isselected": isSelected,
+      style: {
+        justifyContent: align === "middle" || legacyAlign ? "center" : align,
+        alignItems: verticalAlign === "middle" ? "center" : verticalAlign,
+        padding,
+        ...style
+      },
+      children: /* @__PURE__ */ jsxs(
+        "div",
+        {
+          className: `${cssPrefix}-label__inner tl-text-content__wrapper`,
+          style: {
+            fontSize,
+            lineHeight: lineHeight.toString(),
+            minHeight: Math.floor(fontSize * lineHeight) + "px",
+            minWidth: Math.ceil(textWidth || 0),
+            color: labelColor,
+            width: textWidth ? Math.ceil(textWidth) : void 0,
+            height: textHeight ? Math.ceil(textHeight) : void 0
+          },
+          children: [
+            /* @__PURE__ */ jsx(
+              "div",
+              {
+                className: classNames(
+                  `${cssPrefix} tl-text tl-text-content`,
+                  showTextOutline ? "tl-text__outline" : "tl-text__no-outline"
+                ),
+                dir: "auto",
+                children: finalPlainText.split("\n").map((lineOfText, index) => /* @__PURE__ */ jsx("div", { dir: "auto", children: lineOfText }, index))
+              }
+            ),
+            (isReadyForEditing || isSelected) && /* @__PURE__ */ jsx(
+              PlainTextArea,
+              {
+                ref: rInput,
+                text: plaintext,
+                isEditing,
+                shapeId,
+                ...editableTextRest,
+                handleKeyDown: handleKeyDownCustom ?? editableTextRest.handleKeyDown
+              }
+            )
+          ]
+        }
+      )
+    }
+  );
+});
+export {
+  PlainTextLabel
+};
+//# sourceMappingURL=PlainTextLabel.mjs.map

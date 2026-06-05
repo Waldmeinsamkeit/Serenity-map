@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/lib/sort.ts"],
+  "sourcesContent": ["/**\n * Compares two objects by their id property for use with Array.sort().\n * Sorts objects in ascending order based on their id values.\n *\n * @param a - First object to compare\n * @param b - Second object to compare\n * @returns 1 if a.id \\> b.id, -1 if a.id \\<= b.id\n *\n * @example\n * ```ts\n * const items = [\n *   { id: 'c', name: 'Charlie' },\n *   { id: 'a', name: 'Alice' },\n *   { id: 'b', name: 'Bob' },\n * ]\n *\n * const sorted = items.sort(sortById)\n * // [{ id: 'a', name: 'Alice' }, { id: 'b', name: 'Bob' }, { id: 'c', name: 'Charlie' }]\n * ```\n *\n * @public\n */\nexport function sortById<T extends { id: any }>(a: T, b: T) {\n\treturn a.id > b.id ? 1 : -1\n}\n"],
+  "mappings": "AAsBO,SAAS,SAAgC,GAAM,GAAM;AAC3D,SAAO,EAAE,KAAK,EAAE,KAAK,IAAI;AAC1B;",
+  "names": []
+}

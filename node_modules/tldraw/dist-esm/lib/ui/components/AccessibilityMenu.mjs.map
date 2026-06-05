@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../../src/lib/ui/components/AccessibilityMenu.tsx"],
+  "sourcesContent": ["import {\n\tToggleEnhancedA11yModeItem,\n\tToggleKeyboardShortcutsItem,\n\tToggleReduceMotionItem,\n} from './menu-items'\nimport { TldrawUiMenuGroup } from './primitives/menus/TldrawUiMenuGroup'\nimport { TldrawUiMenuSubmenu } from './primitives/menus/TldrawUiMenuSubmenu'\n\n/** @public @react */\nexport function AccessibilityMenu() {\n\treturn (\n\t\t<TldrawUiMenuSubmenu id=\"help menu accessibility\" label=\"menu.accessibility\">\n\t\t\t<TldrawUiMenuGroup id=\"accessibility\">\n\t\t\t\t<ToggleReduceMotionItem />\n\t\t\t\t<ToggleKeyboardShortcutsItem />\n\t\t\t\t<ToggleEnhancedA11yModeItem />\n\t\t\t</TldrawUiMenuGroup>\n\t\t</TldrawUiMenuSubmenu>\n\t)\n}\n"],
+  "mappings": "AAYG,SACC,KADD;AAZH;AAAA,EACC;AAAA,EACA;AAAA,EACA;AAAA,OACM;AACP,SAAS,yBAAyB;AAClC,SAAS,2BAA2B;AAG7B,SAAS,oBAAoB;AACnC,SACC,oBAAC,uBAAoB,IAAG,2BAA0B,OAAM,sBACvD,+BAAC,qBAAkB,IAAG,iBACrB;AAAA,wBAAC,0BAAuB;AAAA,IACxB,oBAAC,+BAA4B;AAAA,IAC7B,oBAAC,8BAA2B;AAAA,KAC7B,GACD;AAEF;",
+  "names": []
+}

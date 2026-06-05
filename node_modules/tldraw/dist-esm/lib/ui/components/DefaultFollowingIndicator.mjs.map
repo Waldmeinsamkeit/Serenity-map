@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../../src/lib/ui/components/DefaultFollowingIndicator.tsx"],
+  "sourcesContent": ["import { useEditor, usePresence, useValue } from '@tldraw/editor'\n\n/** @public @react */\nexport function DefaultFollowingIndicator() {\n\tconst editor = useEditor()\n\tconst followingUserId = useValue('follow', () => editor.getInstanceState().followingUserId, [\n\t\teditor,\n\t])\n\tif (!followingUserId) return null\n\treturn <FollowingIndicatorInner userId={followingUserId} />\n}\n\nfunction FollowingIndicatorInner({ userId }: { userId: string }) {\n\tconst presence = usePresence(userId)\n\tif (!presence) return null\n\treturn <div className=\"tlui-following-indicator\" style={{ borderColor: presence.color }} />\n}\n"],
+  "mappings": "AASQ;AATR,SAAS,WAAW,aAAa,gBAAgB;AAG1C,SAAS,4BAA4B;AAC3C,QAAM,SAAS,UAAU;AACzB,QAAM,kBAAkB,SAAS,UAAU,MAAM,OAAO,iBAAiB,EAAE,iBAAiB;AAAA,IAC3F;AAAA,EACD,CAAC;AACD,MAAI,CAAC,gBAAiB,QAAO;AAC7B,SAAO,oBAAC,2BAAwB,QAAQ,iBAAiB;AAC1D;AAEA,SAAS,wBAAwB,EAAE,OAAO,GAAuB;AAChE,QAAM,WAAW,YAAY,MAAM;AACnC,MAAI,CAAC,SAAU,QAAO;AACtB,SAAO,oBAAC,SAAI,WAAU,4BAA2B,OAAO,EAAE,aAAa,SAAS,MAAM,GAAG;AAC1F;",
+  "names": []
+}

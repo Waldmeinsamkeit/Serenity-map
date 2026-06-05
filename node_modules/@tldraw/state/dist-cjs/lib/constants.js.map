@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/lib/constants.ts"],
+  "sourcesContent": ["/**\n * The initial epoch value used to mark derivations (computed signals and effects) as dirty before their first computation.\n *\n * This constant ensures that all computed signals and effects start in a \"dirty\" state, guaranteeing they will\n * be computed/executed at least once when first accessed or started. The value -1 is used because:\n * - Global epoch starts at 0 (GLOBAL_START_EPOCH + 1)\n * - Any derived signal initialized with GLOBAL_START_EPOCH (-1) will be considered dirty when compared to any positive epoch\n * - This forces initial computation/execution without requiring special initialization logic\n *\n * Used by:\n * - Computed signals to track when they were last changed\n * - Effect schedulers to track when they were last executed\n * - Transaction system for initial global and reaction epoch values\n *\n * @example\n * ```ts\n * // In Computed class constructor\n * lastChangedEpoch = GLOBAL_START_EPOCH // -1, marking as dirty\n *\n * // When global epoch is 5, this computed will be dirty since -1 < 5\n * const needsComputation = this.lastChangedEpoch < globalEpoch\n * ```\n *\n * @public\n */\nexport const GLOBAL_START_EPOCH = -1\n"],
+  "mappings": ";;;;;;;;;;;;;;;;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAyBO,MAAM,qBAAqB;",
+  "names": []
+}

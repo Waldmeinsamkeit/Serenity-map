@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../src/lib/utils/assets.ts"],
+  "sourcesContent": ["import { fetch } from '@tldraw/utils'\nimport { version } from '../../version'\n\n/**\n * Converts a data URL to a file.\n * @param url - The data URL to convert.\n * @param filename - The name of the file.\n * @param mimeType - The MIME type of the file.\n * @returns A promise that resolves to a file.\n * @public */\nexport async function dataUrlToFile(url: string, filename: string, mimeType: string) {\n\tconst res = await fetch(url)\n\tconst buf = await res.arrayBuffer()\n\treturn new File([buf], filename, { type: mimeType })\n}\n\n/** @internal */\nconst CDN_BASE_URL = 'https://cdn.tldraw.com'\n\n/**\n * Gets the default CDN base URL.\n * @returns The default CDN base URL.\n * @public */\nexport function getDefaultCdnBaseUrl() {\n\treturn `${CDN_BASE_URL}/${version}`\n}\n"],
+  "mappings": "AAAA,SAAS,aAAa;AACtB,SAAS,eAAe;AASxB,eAAsB,cAAc,KAAa,UAAkB,UAAkB;AACpF,QAAM,MAAM,MAAM,MAAM,GAAG;AAC3B,QAAM,MAAM,MAAM,IAAI,YAAY;AAClC,SAAO,IAAI,KAAK,CAAC,GAAG,GAAG,UAAU,EAAE,MAAM,SAAS,CAAC;AACpD;AAGA,MAAM,eAAe;AAMd,SAAS,uBAAuB;AACtC,SAAO,GAAG,YAAY,IAAI,OAAO;AAClC;",
+  "names": []
+}

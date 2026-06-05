@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../src/lib/hooks/useCoarsePointer.ts"],
+  "sourcesContent": ["import { unsafe__withoutCapture } from '@tldraw/state'\nimport { useReactor } from '@tldraw/state-react'\nimport { tlenvReactive } from '../globals/environment'\nimport { useEditor } from './useEditor'\n\n/** @internal */\nexport function useCoarsePointer() {\n\tconst editor = useEditor()\n\n\t// When the coarse pointer state changes, update the instance state\n\tuseReactor(\n\t\t'coarse pointer change',\n\t\t() => {\n\t\t\tconst isCoarsePointer = tlenvReactive.get().isCoarsePointer\n\t\t\tconst isInstanceStateCoarsePointer = unsafe__withoutCapture(\n\t\t\t\t() => editor.getInstanceState().isCoarsePointer\n\t\t\t)\n\t\t\tif (isCoarsePointer === isInstanceStateCoarsePointer) return\n\t\t\teditor.updateInstanceState({ isCoarsePointer: isCoarsePointer })\n\t\t},\n\t\t[editor]\n\t)\n}\n"],
+  "mappings": "AAAA,SAAS,8BAA8B;AACvC,SAAS,kBAAkB;AAC3B,SAAS,qBAAqB;AAC9B,SAAS,iBAAiB;AAGnB,SAAS,mBAAmB;AAClC,QAAM,SAAS,UAAU;AAGzB;AAAA,IACC;AAAA,IACA,MAAM;AACL,YAAM,kBAAkB,cAAc,IAAI,EAAE;AAC5C,YAAM,+BAA+B;AAAA,QACpC,MAAM,OAAO,iBAAiB,EAAE;AAAA,MACjC;AACA,UAAI,oBAAoB,6BAA8B;AACtD,aAAO,oBAAoB,EAAE,gBAAiC,CAAC;AAAA,IAChE;AAAA,IACA,CAAC,MAAM;AAAA,EACR;AACD;",
+  "names": []
+}

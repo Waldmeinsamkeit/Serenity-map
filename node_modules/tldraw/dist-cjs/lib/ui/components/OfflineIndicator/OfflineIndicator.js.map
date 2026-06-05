@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../../../src/lib/ui/components/OfflineIndicator/OfflineIndicator.tsx"],
+  "sourcesContent": ["import { useTranslation } from '../../hooks/useTranslation/useTranslation'\nimport { TldrawUiIcon } from '../primitives/TldrawUiIcon'\nimport { TldrawUiTooltip } from '../primitives/TldrawUiTooltip'\n\n/** @public @react */\nexport function OfflineIndicator() {\n\tconst msg = useTranslation()\n\n\treturn (\n\t\t<TldrawUiTooltip content={msg('status.offline')}>\n\t\t\t<div className=\"tlui-offline-indicator\">\n\t\t\t\t<TldrawUiIcon icon=\"status-offline\" label={msg('status.offline')} small />\n\t\t\t</div>\n\t\t</TldrawUiTooltip>\n\t)\n}\n"],
+  "mappings": ";;;;;;;;;;;;;;;;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAWI;AAXJ,4BAA+B;AAC/B,0BAA6B;AAC7B,6BAAgC;AAGzB,SAAS,mBAAmB;AAClC,QAAM,UAAM,sCAAe;AAE3B,SACC,4CAAC,0CAAgB,SAAS,IAAI,gBAAgB,GAC7C,sDAAC,SAAI,WAAU,0BACd,sDAAC,oCAAa,MAAK,kBAAiB,OAAO,IAAI,gBAAgB,GAAG,OAAK,MAAC,GACzE,GACD;AAEF;",
+  "names": []
+}

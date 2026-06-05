@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/lib/isSignal.ts"],
+  "sourcesContent": ["import { _Atom } from './Atom'\nimport { _Computed } from './Computed'\nimport { Signal } from './types'\n\n/**\n * Type guard function that determines whether a value is a signal (either an Atom or Computed).\n *\n * This utility function is helpful when working with mixed data types and you need to\n * differentiate between regular values and reactive signal containers. It returns `true`\n * if the provided value is either an atomic signal created with `atom()` or a computed\n * signal created with `computed()`.\n *\n * @param value - The value to check, can be of any type\n * @returns `true` if the value is a Signal (Atom or Computed), `false` otherwise\n *\n * @example\n * ```ts\n * import { atom, computed, isSignal } from '@tldraw/state'\n *\n * const count = atom('count', 5)\n * const doubled = computed('doubled', () => count.get() * 2)\n * const regularValue = 'hello'\n *\n * console.log(isSignal(count))        // true\n * console.log(isSignal(doubled))      // true\n * console.log(isSignal(regularValue)) // false\n * console.log(isSignal(null))         // false\n * ```\n *\n * @public\n */\nexport function isSignal(value: any): value is Signal<any> {\n\treturn value instanceof _Atom || value instanceof _Computed\n}\n"],
+  "mappings": "AAAA,SAAS,aAAa;AACtB,SAAS,iBAAiB;AA8BnB,SAAS,SAAS,OAAkC;AAC1D,SAAO,iBAAiB,SAAS,iBAAiB;AACnD;",
+  "names": []
+}
