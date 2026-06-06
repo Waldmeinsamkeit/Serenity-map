@@ -1,0 +1,8 @@
+interface:
+  display_name: "Industry Research Canvas"
+  short_description: "Turn an industry into a bottleneck-centered mind map."
+  brand_color: "#2F6F73"
+  default_prompt: "Use $industry-research-canvas to turn this industry into a structured mind map with layers, bottlenecks, companies, evidence, risks, and next checks."
+
+policy:
+  allow_implicit_invocation: true

@@ -1,5 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { z } from 'zod'
 import {
   applyAiPatchToSnapshot,
@@ -16,6 +18,25 @@ import {
   validateAiPatchForSnapshot,
   writeStoredCanvas,
 } from './serenity-core.mjs'
+
+function loadDotEnv() {
+  try {
+    const text = readFileSync(join(projectRoot, '.env'), 'utf8')
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      const index = trimmed.indexOf('=')
+      if (index <= 0) continue
+      const key = trimmed.slice(0, index).trim()
+      const value = trimmed.slice(index + 1).trim().replace(/^["']|["']$/g, '')
+      if (key && process.env[key] === undefined) process.env[key] = value
+    }
+  } catch {
+    // .env is optional.
+  }
+}
+
+loadDotEnv()
 
 const server = new McpServer({
   name: 'serenity-learning-canvas',
@@ -45,6 +66,7 @@ server.registerTool(
       nodeCount: context.summary.nodeCount,
       edgeCount: context.summary.edgeCount,
       updatedAt: stored.updatedAt ?? null,
+      tushareTokenConfigured: Boolean(process.env.TUSHARE_TOKEN),
     })
   }
 )

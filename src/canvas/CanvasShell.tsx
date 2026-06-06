@@ -27,6 +27,8 @@ import {
   syncLearningCardText,
   updateLearningCard,
 } from '../model/learningGraph'
+import { createRoboticsIndustryMap } from '../model/roboticsSeed'
+import { createAiSemiconductorIndustryMap } from '../model/aiSemiconductorSeed'
 import type { AiPatch, LearningStatus, PatchValidationResult } from '../model/types'
 import { loadLocalCanvasSnapshot, saveLocalCanvasSnapshot } from './localCanvasStore'
 
@@ -60,7 +62,8 @@ function copyText(text: string) {
 export function CanvasShell() {
   const [editor, setEditor] = useState<Editor | null>(null)
   const saveTimerRef = useRef<number | null>(null)
-  const isLoadingSnapshotRef = useRef(false)
+  const canSaveSnapshotRef = useRef(false)
+  const storeUpdatedAtRef = useRef<string | undefined>(undefined)
   const [inspector, setInspector] = useState<InspectorState | null>(null)
   const [contextText, setContextText] = useState('')
   const [patchText, setPatchText] = useState('')
@@ -81,19 +84,29 @@ export function CanvasShell() {
     mountedEditor.updateInstanceState({ isGridMode: true })
 
     void (async () => {
-      isLoadingSnapshotRef.current = true
+      canSaveSnapshotRef.current = false
       try {
         const snapshot = await loadLocalCanvasSnapshot()
-        if (snapshot) {
-          mountedEditor.loadSnapshot(snapshot)
+        if (snapshot?.snapshot) {
+          storeUpdatedAtRef.current = snapshot.updatedAt
+          mountedEditor.loadSnapshot(snapshot.snapshot)
           syncLearningCardText(mountedEditor)
           refreshInspector(mountedEditor)
+        }
+        if (!mountedEditor.getCurrentPageShapes().some((shape) => getCardData(shape))) {
+          createRoboticsIndustryMap(mountedEditor)
+          createAiSemiconductorIndustryMap(mountedEditor)
+          syncLearningCardText(mountedEditor)
+          refreshInspector(mountedEditor)
+          void saveLocalCanvasSnapshot(mountedEditor.getSnapshot(), storeUpdatedAtRef.current).then((result) => {
+            storeUpdatedAtRef.current = result.updatedAt
+          })
         }
       } catch {
         showToast('本地画布读取失败，继续使用浏览器缓存')
       } finally {
         window.setTimeout(() => {
-          isLoadingSnapshotRef.current = false
+          canSaveSnapshotRef.current = true
         }, 0)
       }
     })()
@@ -101,10 +114,12 @@ export function CanvasShell() {
     mountedEditor.store.listen(() => {
       syncLearningCardText(mountedEditor)
       refreshInspector(mountedEditor)
-      if (isLoadingSnapshotRef.current) return
+      if (!canSaveSnapshotRef.current) return
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
       saveTimerRef.current = window.setTimeout(() => {
-        void saveLocalCanvasSnapshot(mountedEditor.getSnapshot()).catch(() => {
+        void saveLocalCanvasSnapshot(mountedEditor.getSnapshot(), storeUpdatedAtRef.current).then((result) => {
+          storeUpdatedAtRef.current = result.updatedAt
+        }).catch(() => {
           showToast('本地画布保存失败')
         })
       }, 800)
@@ -218,7 +233,7 @@ export function CanvasShell() {
   return (
     <div className={isStylePanelOpen ? 'app-shell style-panel-open' : 'app-shell'}>
       <div className="canvas-frame">
-        <Tldraw persistenceKey="serenity-learning-canvas" onMount={handleMount} />
+        <Tldraw onMount={handleMount} />
       </div>
 
       <aside className="tool-rail" aria-label="Canvas tools">

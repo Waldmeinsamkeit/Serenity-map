@@ -13,17 +13,17 @@ export async function loadLocalCanvasSnapshot() {
   if (response.status === 404) return null
   if (!response.ok) throw new Error(`Failed to load local canvas: ${response.status}`)
 
-  const payload = (await response.json()) as StoredCanvasSnapshot
-  return payload.snapshot
+  return (await response.json()) as StoredCanvasSnapshot
 }
 
-export async function saveLocalCanvasSnapshot(snapshot: Partial<TLEditorSnapshot>) {
+export async function saveLocalCanvasSnapshot(snapshot: Partial<TLEditorSnapshot>, baseUpdatedAt?: string) {
   const response = await fetch(CANVAS_ENDPOINT, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ snapshot }),
+    body: JSON.stringify({ snapshot, baseUpdatedAt }),
   })
 
+  if (response.status === 409) throw new Error('Canvas changed on disk. Reload before saving.')
   if (!response.ok) throw new Error(`Failed to save local canvas: ${response.status}`)
   return response.json() as Promise<{ ok: boolean; updatedAt: string }>
 }

@@ -1,6 +1,26 @@
 import { spawn } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createServer } from 'node:net'
+
+function loadDotEnv() {
+  try {
+    const text = readFileSync('.env', 'utf8')
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      const index = trimmed.indexOf('=')
+      if (index <= 0) continue
+      const key = trimmed.slice(0, index).trim()
+      const value = trimmed.slice(index + 1).trim().replace(/^["']|["']$/g, '')
+      if (key && process.env[key] === undefined) process.env[key] = value
+    }
+  } catch {
+    // .env is optional for local canvas usage.
+  }
+}
+
+loadDotEnv()
 
 const viteBin = join('node_modules', 'vite', 'bin', 'vite.js')
 const defaultStorePort = Number(process.env.SERENITY_STORE_PORT ?? 8787)

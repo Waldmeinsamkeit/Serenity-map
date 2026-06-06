@@ -7,3 +7,5 @@ dist/
 *.err
 
 store/
+.reports/
+reports/

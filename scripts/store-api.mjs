@@ -52,11 +52,25 @@ async function saveCanvas(payload) {
     throw new Error('Payload must contain a snapshot object.')
   }
 
+  if (typeof payload.baseUpdatedAt === 'string') {
+    try {
+      const current = JSON.parse(await readFile(canvasFile, 'utf8'))
+      if (current.updatedAt && current.updatedAt !== payload.baseUpdatedAt) {
+        return {
+          conflict: true,
+          currentUpdatedAt: current.updatedAt,
+        }
+      }
+    } catch (error) {
+      if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 'ENOENT') throw error
+    }
+  }
+
   await mkdir(storeDir, { recursive: true })
   const nextPayload = {
     version: 1,
     updatedAt: new Date().toISOString(),
-    ...payload,
+    snapshot: payload.snapshot,
   }
   const tempFile = `${canvasFile}.tmp`
   await writeFile(tempFile, `${JSON.stringify(nextPayload, null, 2)}\n`, 'utf8')
@@ -95,6 +109,14 @@ const server = createServer(async (request, response) => {
     if (url.pathname === '/api/canvas/default' && request.method === 'PUT') {
       const payload = await readJsonBody(request)
       const saved = await saveCanvas(payload)
+      if (saved.conflict) {
+        sendJson(response, 409, {
+          ok: false,
+          error: 'Canvas snapshot changed on disk. Reload before saving.',
+          currentUpdatedAt: saved.currentUpdatedAt,
+        })
+        return
+      }
       sendJson(response, 200, { ok: true, updatedAt: saved.updatedAt })
       return
     }
