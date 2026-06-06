@@ -1,8 +1,8 @@
 interface:
   display_name: "Industry Research Canvas"
-  short_description: "Turn an industry into a bottleneck-centered mind map."
+  short_description: "Map industries into evidence-backed Serenity canvases."
   brand_color: "#2F6F73"
-  default_prompt: "Use $industry-research-canvas to turn this industry into a structured mind map with layers, bottlenecks, companies, evidence, risks, and next checks."
+  default_prompt: "Use $industry-research-canvas to map this industry into layers, bottlenecks, companies, evidence, risks, next checks, and a Serenity canvas-ready structure."
 
 policy:
   allow_implicit_invocation: true

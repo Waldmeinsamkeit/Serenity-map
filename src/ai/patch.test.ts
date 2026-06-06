@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildMermaidDiagram } from './context'
-import { parseAiPatch, validateAiPatch } from './patch'
+import { parseAiPatch, parsePatchText, validateAiPatch } from './patch'
 import type { CanvasIndex, LearningEdgeForAi, LearningNodeForAi } from '../model/types'
 
 function node(id: string): LearningNodeForAi {
@@ -84,6 +84,82 @@ describe('AI patch contract', () => {
       index([node('a')])
     )
     expect(result.ok).toBe(true)
+  })
+
+  it('converts Serenity Obsidian Markdown into patch operations', () => {
+    const markdown = [
+      '---',
+      'title: "Serenity Canvas Export"',
+      'type: canvas-context',
+      '---',
+      '',
+      '## Edges',
+      '- [[#A (node-a)|A]] -> [[#B (node-b)|B]] - **supports** (`supports`)',
+      '',
+      '## Nodes',
+      '### A (node-a)',
+      '',
+      '- ID: `node-a`',
+      '- Status: `verified`',
+      '- Tags: #robotics #600584-SH',
+      '- Summary: Existing node',
+      '',
+      'Updated body',
+      '',
+      '#### Links',
+      '- Inbound:',
+      '  - none',
+      '- Outbound:',
+      '  - none',
+      '',
+      '### B (node-b)',
+      '',
+      '- ID: `node-b`',
+      '- Status: `exploring`',
+      '- Tags: #robotics',
+      '- Summary: New node',
+      '',
+      '_No body yet._',
+      '',
+      '#### Links',
+      '- Inbound:',
+      '  - none',
+      '- Outbound:',
+      '  - none',
+    ].join('\n')
+    const result = parsePatchText(markdown, index([node('node-a')]))
+
+    expect(result.format).toBe('obsidian')
+    expect(result.errors).toEqual([])
+    expect(result.patch?.operations).toEqual([
+      {
+        op: 'updateNode',
+        id: 'node-a',
+        title: 'A',
+        summary: 'Existing node',
+        body: 'Updated body',
+        tags: ['robotics', '600584-SH'],
+        status: 'verified',
+      },
+      {
+        op: 'addNode',
+        id: 'node-b',
+        title: 'B',
+        summary: 'New node',
+        body: '',
+        tags: ['robotics'],
+        status: 'exploring',
+        x: 480,
+        y: 120,
+      },
+      {
+        op: 'connectNodes',
+        fromId: 'node-a',
+        toId: 'node-b',
+        kind: 'supports',
+        label: 'supports',
+      },
+    ])
   })
 })
 

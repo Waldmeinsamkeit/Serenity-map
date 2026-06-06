@@ -24,6 +24,10 @@ export async function saveLocalCanvasSnapshot(snapshot: Partial<TLEditorSnapshot
   })
 
   if (response.status === 409) throw new Error('Canvas changed on disk. Reload before saving.')
+  if (response.status === 400) {
+    const body = await response.json().catch(() => null)
+    throw new Error(body?.error ?? 'Canvas snapshot failed validation.')
+  }
   if (!response.ok) throw new Error(`Failed to save local canvas: ${response.status}`)
   return response.json() as Promise<{ ok: boolean; updatedAt: string }>
 }

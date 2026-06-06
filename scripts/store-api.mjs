@@ -8,6 +8,7 @@ const storeDir = join(rootDir, 'store')
 const canvasFile = join(storeDir, 'canvas-default.json')
 const port = Number(process.env.SERENITY_STORE_PORT ?? 8787)
 const maxBodyBytes = 10 * 1024 * 1024
+const serenityMetaKey = 'serenity'
 
 function sendJson(response, statusCode, body) {
   response.writeHead(statusCode, {
@@ -52,6 +53,13 @@ async function saveCanvas(payload) {
     throw new Error('Payload must contain a snapshot object.')
   }
 
+  const validation = validateSerenitySnapshot(payload.snapshot)
+  if (!validation.ok) {
+    const error = new Error(validation.error)
+    error.statusCode = 400
+    throw error
+  }
+
   if (typeof payload.baseUpdatedAt === 'string') {
     try {
       const current = JSON.parse(await readFile(canvasFile, 'utf8'))
@@ -76,6 +84,47 @@ async function saveCanvas(payload) {
   await writeFile(tempFile, `${JSON.stringify(nextPayload, null, 2)}\n`, 'utf8')
   await rename(tempFile, canvasFile)
   return nextPayload
+}
+
+function isRecord(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function validateSerenitySnapshot(snapshot) {
+  const store = snapshot?.document?.store
+  if (!isRecord(store)) return { ok: false, error: 'Snapshot is missing document.store.' }
+  if (!isRecord(snapshot?.document?.schema)) return { ok: false, error: 'Snapshot is missing document.schema.' }
+  if (!isRecord(snapshot?.session)) return { ok: false, error: 'Snapshot is missing session state.' }
+
+  const records = Object.values(store)
+  const pageIds = new Set(records.filter((record) => record?.typeName === 'page' && typeof record.id === 'string').map((record) => record.id))
+  if (!records.some((record) => record?.typeName === 'document')) return { ok: false, error: 'Snapshot is missing a document record.' }
+  if (pageIds.size === 0) return { ok: false, error: 'Snapshot is missing a page record.' }
+
+  const currentPageId = typeof snapshot.session.currentPageId === 'string' ? snapshot.session.currentPageId : pageIds.values().next().value
+  if (!pageIds.has(currentPageId)) return { ok: false, error: 'Snapshot session points to a missing page.' }
+
+  const currentPage = store[currentPageId]
+  const serenityPageMeta = currentPage?.meta?.[serenityMetaKey]
+  const allowEmptyCurrentPage = serenityPageMeta?.kind === 'serenity-page' && serenityPageMeta.allowEmpty === true
+  const hasCurrentPageSerenityCard = records.some((record) => {
+    const serenity = record?.meta?.[serenityMetaKey]
+    return record?.typeName === 'shape' &&
+      record.type === 'geo' &&
+      record.parentId === currentPageId &&
+      serenity?.kind === 'learning-card'
+  })
+  const hasAnySerenityCard = records.some((record) => {
+    const serenity = record?.meta?.[serenityMetaKey]
+    return record?.typeName === 'shape' &&
+      record.type === 'geo' &&
+      serenity?.kind === 'learning-card'
+  })
+  if (!hasCurrentPageSerenityCard && !hasAnySerenityCard && !allowEmptyCurrentPage) {
+    return { ok: false, error: 'Snapshot has no Serenity learning-card records on the current page.' }
+  }
+
+  return { ok: true }
 }
 
 const server = createServer(async (request, response) => {
@@ -123,7 +172,7 @@ const server = createServer(async (request, response) => {
 
     sendJson(response, 404, { ok: false, error: 'Not found.' })
   } catch (error) {
-    sendJson(response, 500, {
+    sendJson(response, error?.statusCode ?? 500, {
       ok: false,
       error: error instanceof Error ? error.message : 'Unknown server error.',
     })

@@ -7,8 +7,9 @@ import {
   applyAiPatchToSnapshot,
   defaultCanvasFile,
   exportAiContextFromSnapshot,
+  exportObsidianMarkdownFromSnapshot,
   exportReadableContextFromSnapshot,
-  parseAiPatchInput,
+  parsePatchTextInput,
   patchTemplate,
   projectRoot,
   readStoredCanvas,
@@ -77,13 +78,27 @@ server.registerTool(
     title: 'Get Serenity AI Context',
     description: 'Read the local canvas snapshot and return AI-readable semantic context.',
     inputSchema: {
-      format: z.enum(['json', 'markdown']).optional().default('json'),
+      format: z.enum(['json', 'markdown', 'obsidian']).optional().default('json'),
     },
   },
   async ({ format }) => {
     const stored = await loadCanvas()
+    if (format === 'obsidian') return toolText(exportObsidianMarkdownFromSnapshot(stored.snapshot))
     if (format === 'markdown') return toolText(exportReadableContextFromSnapshot(stored.snapshot))
     return toolText(exportAiContextFromSnapshot(stored.snapshot))
+  }
+)
+
+server.registerTool(
+  'serenity_export_obsidian_markdown',
+  {
+    title: 'Export Serenity Obsidian Markdown',
+    description: 'Export the current local canvas as Obsidian-readable Markdown with frontmatter, wikilinks, tags, Mermaid, nodes, and edges.',
+    inputSchema: {},
+  },
+  async () => {
+    const stored = await loadCanvas()
+    return toolText(exportObsidianMarkdownFromSnapshot(stored.snapshot))
   }
 )
 
@@ -107,10 +122,11 @@ server.registerTool(
     },
   },
   async ({ patch }) => {
-    const parsed = parseAiPatchInput(patch)
-    if (!parsed.patch) return toolText({ ok: false, errors: parsed.errors, warnings: [], summary: [] })
     const stored = await loadCanvas()
-    return toolText(validateAiPatchForSnapshot(stored.snapshot, parsed.patch))
+    const parsed = parsePatchTextInput(patch, stored.snapshot)
+    if (!parsed.patch) return toolText({ ok: false, errors: parsed.errors, warnings: [], summary: [] })
+    const validation = validateAiPatchForSnapshot(stored.snapshot, parsed.patch)
+    return toolText({ ...validation, format: parsed.format })
   }
 )
 
@@ -124,9 +140,9 @@ server.registerTool(
     },
   },
   async ({ patch }) => {
-    const parsed = parseAiPatchInput(patch)
-    if (!parsed.patch) return toolText({ ok: false, errors: parsed.errors, warnings: [], summary: [] })
     const stored = await loadCanvas()
+    const parsed = parsePatchTextInput(patch, stored.snapshot)
+    if (!parsed.patch) return toolText({ ok: false, errors: parsed.errors, warnings: [], summary: [] })
     const result = applyAiPatchToSnapshot(stored.snapshot, parsed.patch)
     if (!result.validation.ok) return toolText(result.validation)
     const saved = await writeStoredCanvas({ ...stored, snapshot: result.snapshot }, defaultCanvasFile)
@@ -136,6 +152,59 @@ server.registerTool(
       updatedAt: saved.updatedAt,
       nodeCount: context.summary.nodeCount,
       edgeCount: context.summary.edgeCount,
+      format: parsed.format,
+      summary: summarizePatch(parsed.patch),
+      warnings: result.validation.warnings,
+    })
+  }
+)
+
+server.registerTool(
+  'serenity_validate_markdown_import',
+  {
+    title: 'Validate Serenity Markdown Import',
+    description: 'Parse a Serenity Obsidian Markdown export into AI Patch operations and validate it without writing changes.',
+    inputSchema: {
+      markdown: z.string(),
+    },
+  },
+  async ({ markdown }) => {
+    const stored = await loadCanvas()
+    const parsed = parsePatchTextInput(markdown, stored.snapshot)
+    if (!parsed.patch) return toolText({ ok: false, errors: parsed.errors, warnings: [], summary: [], format: parsed.format })
+    const validation = validateAiPatchForSnapshot(stored.snapshot, parsed.patch)
+    return toolText({
+      ...validation,
+      format: parsed.format,
+      patch: parsed.patch,
+      summary: summarizePatch(parsed.patch),
+    })
+  }
+)
+
+server.registerTool(
+  'serenity_apply_markdown_import',
+  {
+    title: 'Apply Serenity Markdown Import',
+    description: 'Parse, validate, and apply a Serenity Obsidian Markdown export to the local canvas snapshot.',
+    inputSchema: {
+      markdown: z.string(),
+    },
+  },
+  async ({ markdown }) => {
+    const stored = await loadCanvas()
+    const parsed = parsePatchTextInput(markdown, stored.snapshot)
+    if (!parsed.patch) return toolText({ ok: false, errors: parsed.errors, warnings: [], summary: [], format: parsed.format })
+    const result = applyAiPatchToSnapshot(stored.snapshot, parsed.patch)
+    if (!result.validation.ok) return toolText({ ...result.validation, format: parsed.format })
+    const saved = await writeStoredCanvas({ ...stored, snapshot: result.snapshot }, defaultCanvasFile)
+    const context = exportAiContextFromSnapshot(saved.snapshot)
+    return toolText({
+      ok: true,
+      updatedAt: saved.updatedAt,
+      nodeCount: context.summary.nodeCount,
+      edgeCount: context.summary.edgeCount,
+      format: parsed.format,
       summary: summarizePatch(parsed.patch),
       warnings: result.validation.warnings,
     })

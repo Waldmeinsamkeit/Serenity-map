@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
+import { ZERO_INDEX_KEY, getIndexAbove } from '@tldraw/utils'
 
 export const SERENITY_META_KEY = 'serenity'
 export const CARD_WIDTH = 260
@@ -36,6 +37,14 @@ function nowIso() {
   return new Date().toISOString()
 }
 
+function escapeYamlString(value) {
+  return `"${String(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
+}
+
+function escapeMarkdown(value) {
+  return String(value).replaceAll('\\', '\\\\').replaceAll('[', '\\[').replaceAll(']', '\\]').replaceAll('|', '\\|')
+}
+
 function isRecord(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
@@ -50,6 +59,27 @@ function isNumber(value) {
 
 function normalizeTags(tags) {
   return [...new Set((tags ?? []).map((tag) => String(tag).trim()).filter(Boolean))]
+}
+
+function normalizeObsidianTag(value) {
+  return String(value)
+    .trim()
+    .replace(/^#+/, '')
+    .replaceAll(/[^\p{L}\p{N}_/-]+/gu, '-')
+    .replaceAll(/^-+|-+$/g, '')
+}
+
+function uniqueValues(values) {
+  return [...new Set(values.map((value) => String(value).trim()).filter(Boolean))]
+}
+
+function nodeAnchor(node) {
+  return `${node.title || node.id} (${node.id})`
+}
+
+function nodeLink(node) {
+  const label = node.title || node.id
+  return `[[#${escapeMarkdown(nodeAnchor(node))}|${escapeMarkdown(label)}]]`
 }
 
 function richText(text) {
@@ -68,15 +98,19 @@ function formatCardText(data) {
 
 function pageIdForSnapshot(snapshot) {
   const store = getStore(snapshot)
-  return Object.values(store).find((record) => record?.typeName === 'page')?.id ?? 'page:page'
+  const pages = Object.values(store).filter((record) => record?.typeName === 'page' && isString(record.id))
+  const pageIds = new Set(pages.map((page) => page.id))
+  if (isString(snapshot?.session?.currentPageId) && pageIds.has(snapshot.session.currentPageId)) return snapshot.session.currentPageId
+  const pageStateId = snapshot?.session?.pageStates?.find((pageState) => pageIds.has(pageState?.pageId))?.pageId
+  return pageStateId ?? pages[0]?.id ?? 'page:page'
 }
 
 function getStore(snapshot) {
   return snapshot?.document?.store ?? {}
 }
 
-function getShapeRecords(snapshot) {
-  return Object.values(getStore(snapshot)).filter((record) => record?.typeName === 'shape')
+function getShapeRecords(snapshot, pageId = pageIdForSnapshot(snapshot)) {
+  return Object.values(getStore(snapshot)).filter((record) => record?.typeName === 'shape' && (!pageId || record.parentId === pageId))
 }
 
 function getBindingRecords(snapshot) {
@@ -88,6 +122,48 @@ function getSerenityMeta(shape) {
   if (!isRecord(meta) || !('kind' in meta)) return null
   if (meta.kind === 'learning-card' || meta.kind === 'learning-edge') return meta
   return null
+}
+
+function getCurrentPageState(snapshot) {
+  const currentPageId = pageIdForSnapshot(snapshot)
+  return snapshot?.session?.pageStates?.find((pageState) => pageState?.pageId === currentPageId) ?? null
+}
+
+function isAllowedEmptyPage(snapshot, pageId = pageIdForSnapshot(snapshot)) {
+  const page = getStore(snapshot)[pageId]
+  const meta = page?.meta?.[SERENITY_META_KEY]
+  return isRecord(meta) && meta.kind === 'serenity-page' && meta.allowEmpty === true
+}
+
+function validateSerenitySnapshotForWrite(snapshot) {
+  const store = getStore(snapshot)
+  const records = Object.values(store)
+  if (!isRecord(snapshot?.document?.schema)) return 'Snapshot is missing document.schema.'
+  if (!isRecord(snapshot?.session)) return 'Snapshot is missing session state.'
+  if (!records.some((record) => record?.typeName === 'document')) return 'Snapshot is missing a document record.'
+
+  const pageIds = new Set(records.filter((record) => record?.typeName === 'page' && isString(record.id)).map((record) => record.id))
+  if (pageIds.size === 0) return 'Snapshot is missing a page record.'
+
+  const currentPageId = isString(snapshot.session.currentPageId) ? snapshot.session.currentPageId : pageIds.values().next().value
+  if (!pageIds.has(currentPageId)) return 'Snapshot session points to a missing page.'
+
+  const hasCurrentPageSerenityCard = records.some((record) => {
+    const meta = getSerenityMeta(record)
+    return record?.typeName === 'shape' &&
+      record.type === 'geo' &&
+      record.parentId === currentPageId &&
+      meta?.kind === 'learning-card'
+  })
+  const hasAnySerenityCard = records.some((record) => {
+    const meta = getSerenityMeta(record)
+    return record?.typeName === 'shape' &&
+      record.type === 'geo' &&
+      meta?.kind === 'learning-card'
+  })
+  return hasCurrentPageSerenityCard || hasAnySerenityCard || isAllowedEmptyPage(snapshot, currentPageId)
+    ? null
+    : 'Snapshot has no Serenity learning-card records on the current page.'
 }
 
 function createDefaultStoredCanvas() {
@@ -160,6 +236,9 @@ export async function readStoredCanvas(canvasFile = defaultCanvasFile) {
 }
 
 export async function writeStoredCanvas(payload, canvasFile = defaultCanvasFile) {
+  const validationError = validateSerenitySnapshotForWrite(payload?.snapshot)
+  if (validationError) throw new Error(validationError)
+
   await mkdir(dirname(canvasFile), { recursive: true })
   const nextPayload = {
     version: 1,
@@ -249,19 +328,20 @@ export function exportAiContextFromSnapshot(snapshot) {
   const index = buildCanvasIndexFromSnapshot(snapshot)
   const nodes = [...index.nodesById.values()]
   const edges = [...index.edgesById.values()]
+  const pageState = getCurrentPageState(snapshot)
+  const selectedNodeIds = pageState?.selectedShapeIds
+    ?.map((shapeId) => nodes.find((node) => node.shapeId === shapeId)?.id)
+    .filter(Boolean) ?? []
   return {
     version: 1,
     exportedAt: nowIso(),
     summary: {
       nodeCount: nodes.length,
       edgeCount: edges.length,
-      selectedNodeIds: snapshot?.session?.pageStates?.[0]?.selectedShapeIds
-        ?.map((shapeId) => nodes.find((node) => node.shapeId === shapeId)?.id)
-        .filter(Boolean) ?? [],
+      selectedNodeIds,
+      currentPageId: pageIdForSnapshot(snapshot),
     },
-    selectedNodeIds: snapshot?.session?.pageStates?.[0]?.selectedShapeIds
-      ?.map((shapeId) => nodes.find((node) => node.shapeId === shapeId)?.id)
-      .filter(Boolean) ?? [],
+    selectedNodeIds,
     nodes,
     edges,
     neighborhoods: buildNeighborhoods(nodes, edges),
@@ -301,6 +381,226 @@ export function exportReadableContextFromSnapshot(snapshot) {
     JSON.stringify(context, null, 2),
     '```',
   ].join('\n')
+}
+
+export function exportObsidianMarkdownFromSnapshot(snapshot) {
+  const context = exportAiContextFromSnapshot(snapshot)
+  const selected = context.selectedNodeIds.length ? context.selectedNodeIds.join(', ') : 'none'
+  const nodeById = new Map(context.nodes.map((node) => [node.id, node]))
+  const obsidianTags = uniqueValues([
+    'serenity',
+    'canvas',
+    'industry-research',
+    ...context.nodes.flatMap((node) => node.tags.map(normalizeObsidianTag)),
+  ]).filter(Boolean)
+  const relatedNotes = uniqueValues(context.nodes.map((node) => node.title || node.id))
+  const filenameTitle = 'Serenity Canvas Export'
+
+  const frontmatter = [
+    '---',
+    `title: ${escapeYamlString(filenameTitle)}`,
+    `created: ${escapeYamlString(context.exportedAt)}`,
+    'source: serenity',
+    'type: canvas-context',
+    'tags:',
+    ...obsidianTags.map((tag) => `  - ${escapeYamlString(tag)}`),
+    'aliases:',
+    '  - Serenity AI Context',
+    `node_count: ${context.summary.nodeCount}`,
+    `edge_count: ${context.summary.edgeCount}`,
+    'selected_node_ids:',
+    ...(context.selectedNodeIds.length ? context.selectedNodeIds.map((id) => `  - ${escapeYamlString(id)}`) : ['  - none']),
+    'related_notes:',
+    ...relatedNotes.map((title) => `  - ${escapeYamlString(title)}`),
+    '---',
+  ]
+
+  const nodeIndex = context.nodes.map((node) => {
+    const tags = node.tags.map(normalizeObsidianTag).filter(Boolean).map((tag) => `#${tag}`).join(' ')
+    return `- ${nodeLink(node)} - \`${node.status}\`${tags ? ` ${tags}` : ''}`
+  })
+
+  const edgeLines = context.edges.map((edge) => {
+    const from = nodeById.get(edge.fromId)
+    const to = nodeById.get(edge.toId)
+    const fromText = from ? nodeLink(from) : `\`${edge.fromId}\``
+    const toText = to ? nodeLink(to) : `\`${edge.toId}\``
+    return `- ${fromText} -> ${toText} - **${escapeMarkdown(edge.label || edge.kind)}** (\`${edge.kind}\`)`
+  })
+
+  const nodeSections = context.nodes.flatMap((node) => {
+    const inbound = node.inbound
+      .map((edgeId) => context.edges.find((edge) => edge.id === edgeId))
+      .filter(Boolean)
+      .map((edge) => {
+        const from = edge ? nodeById.get(edge.fromId) : null
+        return edge && from ? `  - from ${nodeLink(from)}: ${escapeMarkdown(edge.label || edge.kind)}` : ''
+      })
+      .filter(Boolean)
+    const outbound = node.outbound
+      .map((edgeId) => context.edges.find((edge) => edge.id === edgeId))
+      .filter(Boolean)
+      .map((edge) => {
+        const to = edge ? nodeById.get(edge.toId) : null
+        return edge && to ? `  - to ${nodeLink(to)}: ${escapeMarkdown(edge.label || edge.kind)}` : ''
+      })
+      .filter(Boolean)
+    const tags = node.tags.map(normalizeObsidianTag).filter(Boolean).map((tag) => `#${tag}`).join(' ')
+
+    return [
+      `### ${nodeAnchor(node)}`,
+      '',
+      `- ID: \`${node.id}\``,
+      `- Status: \`${node.status}\``,
+      `- Tags: ${tags || 'none'}`,
+      `- Summary: ${node.summary || 'none'}`,
+      '',
+      node.body ? node.body : '_No body yet._',
+      '',
+      '#### Links',
+      '- Inbound:',
+      ...(inbound.length ? inbound : ['  - none']),
+      '- Outbound:',
+      ...(outbound.length ? outbound : ['  - none']),
+      '',
+    ]
+  })
+
+  return [
+    ...frontmatter,
+    '',
+    `# ${filenameTitle}`,
+    '',
+    '> [!summary]',
+    `> Nodes: ${context.summary.nodeCount} | Edges: ${context.summary.edgeCount} | Selected: ${selected}`,
+    '',
+    '## Node Index',
+    ...nodeIndex,
+    '',
+    '## Relationship Map',
+    '```mermaid',
+    context.diagram,
+    '```',
+    '',
+    '## Edges',
+    ...edgeLines,
+    '',
+    '## Nodes',
+    ...nodeSections,
+  ].join('\n')
+}
+
+function readMarkdownField(section, name) {
+  const match = section.match(new RegExp(`^- ${name}:\\s*(.*)$`, 'm'))
+  return match?.[1]?.trim() ?? ''
+}
+
+function readBacktickValue(value) {
+  return value.match(/^`([^`]+)`$/)?.[1] ?? value
+}
+
+function readMarkdownTags(value) {
+  if (!value || value === 'none') return []
+  return [...value.matchAll(/#([^\s#]+)/g)].map((match) => match[1]).filter(Boolean)
+}
+
+function readMarkdownBody(section) {
+  const summaryMatch = section.match(/^- Summary:.*$/m)
+  const linksIndex = section.search(/^#### Links\s*$/m)
+  if (!summaryMatch || linksIndex < 0 || linksIndex <= summaryMatch.index) return ''
+  return section
+    .slice(summaryMatch.index + summaryMatch[0].length, linksIndex)
+    .trim()
+    .replace(/^_No body yet\._$/, '')
+}
+
+function parseNodeHeading(heading, fallbackId) {
+  const match = heading.trim().match(/^(.*?)\s+\(([^()]+)\)$/)
+  return {
+    title: match?.[1]?.trim() || heading.trim() || fallbackId,
+    id: match?.[2]?.trim() || fallbackId,
+  }
+}
+
+function parseObsidianNodes(markdown, index) {
+  const operations = []
+  const sections = [...markdown.matchAll(/^###\s+(.+)$/gm)]
+  for (const [sectionIndex, match] of sections.entries()) {
+    const start = match.index + match[0].length
+    const end = sections[sectionIndex + 1]?.index ?? markdown.length
+    const section = markdown.slice(start, end)
+    const idField = readBacktickValue(readMarkdownField(section, 'ID'))
+    const { id, title } = parseNodeHeading(match[1], idField || `node-import-${sectionIndex + 1}`)
+    const statusField = readBacktickValue(readMarkdownField(section, 'Status'))
+    const status = VALID_STATUSES.includes(statusField) ? statusField : 'exploring'
+    const tags = readMarkdownTags(readMarkdownField(section, 'Tags'))
+    const summary = readMarkdownField(section, 'Summary')
+    const body = readMarkdownBody(section)
+
+    if (index?.nodesById.has(id)) {
+      operations.push({ op: 'updateNode', id, title, summary: summary === 'none' ? '' : summary, body, tags, status })
+    } else {
+      operations.push({
+        op: 'addNode',
+        id,
+        title,
+        summary: summary === 'none' ? '' : summary,
+        body,
+        tags,
+        status,
+        x: 120 + (sectionIndex % 4) * 360,
+        y: 120 + Math.floor(sectionIndex / 4) * 220,
+      })
+    }
+  }
+  return operations
+}
+
+function parseObsidianEdges(markdown, index) {
+  const operations = []
+  const currentEdges = index ? [...index.edgesById.values()] : []
+  const existingPairs = new Set(currentEdges.map((edge) => `${edge.fromId}->${edge.toId}`))
+  const edgeBlock = markdown.match(/^## Edges\s*\n([\s\S]*?)(?=\n##\s|$)/m)?.[1] ?? ''
+  for (const match of edgeBlock.matchAll(/^- \[\[#.*?\(([^()]+)\)\|.*?\]\]\s*->\s*\[\[#.*?\(([^()]+)\)\|.*?\]\]\s*-\s*\*\*(.*?)\*\*\s*\(`([^`]+)`\)/g)) {
+    const fromId = match[1].trim()
+    const toId = match[2].trim()
+    const label = match[3].trim()
+    const kindField = match[4].trim()
+    const kind = VALID_EDGE_KINDS.includes(kindField) ? kindField : 'related'
+    if (existingPairs.has(`${fromId}->${toId}`)) continue
+    operations.push({ op: 'connectNodes', fromId, toId, kind, label })
+    existingPairs.add(`${fromId}->${toId}`)
+  }
+  return operations
+}
+
+export function parseObsidianMarkdownPatchInput(text, snapshot) {
+  const markdown = String(text ?? '').trim()
+  const looksLikeObsidianExport =
+    markdown.startsWith('---') && markdown.includes('type: canvas-context') && markdown.includes('## Nodes')
+  if (!looksLikeObsidianExport) return { patch: null, errors: ['Input is not a Serenity Obsidian Markdown export.'] }
+
+  const index = buildCanvasIndexFromSnapshot(snapshot)
+  const operations = [
+    ...parseObsidianNodes(markdown, index),
+    ...parseObsidianEdges(markdown, index),
+  ]
+  if (!operations.length) return { patch: null, errors: ['No nodes or edges were found in the Obsidian Markdown.'] }
+  return {
+    patch: {
+      version: 1,
+      intent: 'Import Serenity Obsidian Markdown',
+      operations,
+    },
+    errors: [],
+  }
+}
+
+export function parsePatchTextInput(input, snapshot) {
+  if (typeof input !== 'string') return { ...parseAiPatchInput(input), format: 'json' }
+  const trimmed = input.trim()
+  if (trimmed.startsWith('{')) return { ...parseAiPatchInput(trimmed), format: 'json' }
+  return { ...parseObsidianMarkdownPatchInput(trimmed, snapshot), format: 'obsidian' }
 }
 
 function validateOperationShape(op, index, errors) {
@@ -420,8 +720,11 @@ function makeEdgeId() {
 }
 
 function nextShapeIndex(snapshot) {
-  const count = getShapeRecords(snapshot).length + 1
-  return `a${count.toString(36)}`
+  const indexes = getShapeRecords(snapshot)
+    .map((shape) => shape.index)
+    .filter((index) => typeof index === 'string' && index.length > 0)
+    .sort()
+  return getIndexAbove(indexes.at(-1) ?? ZERO_INDEX_KEY)
 }
 
 function createLearningCardRecord(snapshot, input) {

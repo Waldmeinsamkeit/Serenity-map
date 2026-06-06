@@ -3,6 +3,8 @@ import {
   applyAiPatchToSnapshot,
   buildCanvasIndexFromSnapshot,
   exportAiContextFromSnapshot,
+  exportObsidianMarkdownFromSnapshot,
+  parsePatchTextInput,
   validateAiPatchForSnapshot,
 } from '../../scripts/serenity-core.mjs'
 
@@ -16,7 +18,7 @@ function richText(text) {
   }
 }
 
-function card(shapeId, nodeId, title, x, y) {
+function card(shapeId, nodeId, title, x, y, parentId = 'page:page') {
   const data = {
     id: nodeId,
     title,
@@ -31,7 +33,7 @@ function card(shapeId, nodeId, title, x, y) {
     id: shapeId,
     typeName: 'shape',
     type: 'geo',
-    parentId: 'page:page',
+    parentId,
     index: 'a1',
     x,
     y,
@@ -57,7 +59,7 @@ function card(shapeId, nodeId, title, x, y) {
   }
 }
 
-function edge(shapeId, edgeId, fromId, toId) {
+function edge(shapeId, edgeId, fromId, toId, parentId = 'page:page') {
   const data = {
     id: edgeId,
     fromId,
@@ -71,7 +73,7 @@ function edge(shapeId, edgeId, fromId, toId) {
     id: shapeId,
     typeName: 'shape',
     type: 'arrow',
-    parentId: 'page:page',
+    parentId,
     index: 'a3',
     x: 0,
     y: 0,
@@ -118,6 +120,20 @@ function snapshot() {
   }
 }
 
+function multiPageSnapshot() {
+  const result = snapshot()
+  result.document.store['page:second'] = { id: 'page:second', typeName: 'page', name: 'Page 2', index: 'a2', meta: {} }
+  result.document.store['shape:c'] = card('shape:c', 'node-c', 'C', 0, 0, 'page:second')
+  result.document.store['shape:d'] = card('shape:d', 'node-d', 'D', 400, 0, 'page:second')
+  result.document.store['shape:e2'] = edge('shape:e2', 'edge-cd', 'node-c', 'node-d', 'page:second')
+  result.session.currentPageId = 'page:second'
+  result.session.pageStates = [
+    { pageId: 'page:page', selectedShapeIds: ['shape:a'] },
+    { pageId: 'page:second', selectedShapeIds: ['shape:c'] },
+  ]
+  return result
+}
+
 describe('Serenity Node snapshot core', () => {
   it('parses semantic nodes, edges, neighborhoods, and selected node context', () => {
     const context = exportAiContextFromSnapshot(snapshot())
@@ -158,5 +174,122 @@ describe('Serenity Node snapshot core', () => {
     expect(index.nodesById.get('node-a')?.title).toBe('A updated')
     expect(index.nodesById.get('node-c')?.x).toBe(700)
     expect([...index.edgesById.values()].every((item) => item.fromId !== 'node-b' && item.toId !== 'node-b')).toBe(true)
+  })
+
+  it('uses the current tldraw page when exporting and applying patches', () => {
+    const context = exportAiContextFromSnapshot(multiPageSnapshot())
+    expect(context.summary.currentPageId).toBe('page:second')
+    expect(context.summary.nodeCount).toBe(2)
+    expect(context.selectedNodeIds).toEqual(['node-c'])
+    expect([...context.nodes.map((node) => node.id)].sort()).toEqual(['node-c', 'node-d'])
+
+    const result = applyAiPatchToSnapshot(multiPageSnapshot(), {
+      version: 1,
+      operations: [{ op: 'addNode', id: 'node-e', title: 'E', connectFromId: 'node-c' }],
+    })
+    expect(result.validation.ok).toBe(true)
+    const added = Object.values(result.snapshot.document.store).find((record) => record?.meta?.serenity?.data?.id === 'node-e')
+    expect(added?.parentId).toBe('page:second')
+
+    const missingMainPageRef = validateAiPatchForSnapshot(multiPageSnapshot(), {
+      version: 1,
+      operations: [{ op: 'updateNode', id: 'node-a', title: 'Should not see page one' }],
+    })
+    expect(missingMainPageRef.ok).toBe(false)
+    expect(missingMainPageRef.errors.join('\n')).toContain('references missing node: node-a')
+  })
+
+  it('keeps an empty current page visible to MCP when other pages contain Serenity nodes', () => {
+    const result = multiPageSnapshot()
+    delete result.document.store['shape:c']
+    delete result.document.store['shape:d']
+    delete result.document.store['shape:e2']
+
+    const context = exportAiContextFromSnapshot(result)
+    expect(context.summary.currentPageId).toBe('page:second')
+    expect(context.summary.nodeCount).toBe(0)
+    expect(context.summary.edgeCount).toBe(0)
+    expect(context.selectedNodeIds).toEqual([])
+  })
+
+  it('exports and imports Obsidian Markdown through the Node core protocol', () => {
+    const markdown = exportObsidianMarkdownFromSnapshot(snapshot())
+    expect(markdown).toContain('type: canvas-context')
+    expect(markdown).toContain('[[#A (node-a)|A]]')
+    expect(markdown).toContain('## Relationship Map')
+
+    const editedMarkdown = [
+      '---',
+      'title: "Serenity Canvas Export"',
+      'type: canvas-context',
+      '---',
+      '',
+      '## Edges',
+      '- [[#A (node-a)|A]] -> [[#C (node-c)|C]] - **supports** (`supports`)',
+      '',
+      '## Nodes',
+      '### A updated (node-a)',
+      '',
+      '- ID: `node-a`',
+      '- Status: `verified`',
+      '- Tags: #core #obsidian',
+      '- Summary: Existing node changed',
+      '',
+      'Updated body',
+      '',
+      '#### Links',
+      '- Inbound:',
+      '  - none',
+      '- Outbound:',
+      '  - none',
+      '',
+      '### C (node-c)',
+      '',
+      '- ID: `node-c`',
+      '- Status: `exploring`',
+      '- Tags: #new',
+      '- Summary: New imported node',
+      '',
+      '_No body yet._',
+      '',
+      '#### Links',
+      '- Inbound:',
+      '  - none',
+      '- Outbound:',
+      '  - none',
+    ].join('\n')
+    const parsed = parsePatchTextInput(editedMarkdown, snapshot())
+    expect(parsed.format).toBe('obsidian')
+    expect(parsed.errors).toEqual([])
+    expect(parsed.patch.operations).toEqual([
+      {
+        op: 'updateNode',
+        id: 'node-a',
+        title: 'A updated',
+        summary: 'Existing node changed',
+        body: 'Updated body',
+        tags: ['core', 'obsidian'],
+        status: 'verified',
+      },
+      {
+        op: 'addNode',
+        id: 'node-c',
+        title: 'C',
+        summary: 'New imported node',
+        body: '',
+        tags: ['new'],
+        status: 'exploring',
+        x: 480,
+        y: 120,
+      },
+      {
+        op: 'connectNodes',
+        fromId: 'node-a',
+        toId: 'node-c',
+        kind: 'supports',
+        label: 'supports',
+      },
+    ])
+    expect(validateAiPatchForSnapshot(snapshot(), parsed.patch).ok).toBe(true)
   })
 })

@@ -72,6 +72,117 @@ export function parseAiPatch(text: string): { patch: AiPatch | null; errors: str
   }
 }
 
+function readMarkdownField(section: string, name: string) {
+  const match = section.match(new RegExp(`^- ${name}:\\s*(.*)$`, 'm'))
+  return match?.[1]?.trim() ?? ''
+}
+
+function readBacktickValue(value: string) {
+  return value.match(/^`([^`]+)`$/)?.[1] ?? value
+}
+
+function readMarkdownTags(value: string) {
+  if (!value || value === 'none') return []
+  return [...value.matchAll(/#([^\s#]+)/g)].map((match) => match[1]).filter(Boolean)
+}
+
+function readMarkdownBody(section: string) {
+  const summaryMatch = section.match(/^- Summary:.*$/m)
+  const linksIndex = section.search(/^#### Links\s*$/m)
+  if (!summaryMatch || linksIndex < 0 || linksIndex <= summaryMatch.index!) return ''
+  return section
+    .slice(summaryMatch.index! + summaryMatch[0].length, linksIndex)
+    .trim()
+    .replace(/^_No body yet\._$/, '')
+}
+
+function parseNodeHeading(heading: string, fallbackId: string) {
+  const match = heading.trim().match(/^(.*?)\s+\(([^()]+)\)$/)
+  return {
+    title: match?.[1]?.trim() || heading.trim() || fallbackId,
+    id: match?.[2]?.trim() || fallbackId,
+  }
+}
+
+function parseObsidianNodes(markdown: string, index?: CanvasIndex): AiPatchOperation[] {
+  const operations: AiPatchOperation[] = []
+  const sections = [...markdown.matchAll(/^###\s+(.+)$/gm)]
+  for (const [sectionIndex, match] of sections.entries()) {
+    const start = match.index! + match[0].length
+    const end = sections[sectionIndex + 1]?.index ?? markdown.length
+    const section = markdown.slice(start, end)
+    const idField = readBacktickValue(readMarkdownField(section, 'ID'))
+    const { id, title } = parseNodeHeading(match[1], idField || `node-import-${sectionIndex + 1}`)
+    const statusField = readBacktickValue(readMarkdownField(section, 'Status'))
+    const status = readStatus(statusField) ? statusField : 'exploring'
+    const tags = readMarkdownTags(readMarkdownField(section, 'Tags'))
+    const summary = readMarkdownField(section, 'Summary')
+    const body = readMarkdownBody(section)
+
+    if (index?.nodesById.has(id)) {
+      operations.push({ op: 'updateNode', id, title, summary: summary === 'none' ? '' : summary, body, tags, status })
+    } else {
+      operations.push({
+        op: 'addNode',
+        id,
+        title,
+        summary: summary === 'none' ? '' : summary,
+        body,
+        tags,
+        status,
+        x: 120 + (sectionIndex % 4) * 360,
+        y: 120 + Math.floor(sectionIndex / 4) * 220,
+      })
+    }
+  }
+  return operations
+}
+
+function parseObsidianEdges(markdown: string, index?: CanvasIndex): AiPatchOperation[] {
+  const operations: AiPatchOperation[] = []
+  const currentEdges = index ? [...index.edgesById.values()] : []
+  const existingPairs = new Set(currentEdges.map((edge) => `${edge.fromId}->${edge.toId}`))
+  const edgeBlock = markdown.match(/^## Edges\s*\n([\s\S]*?)(?=\n##\s|$)/m)?.[1] ?? ''
+  for (const match of edgeBlock.matchAll(/^- \[\[#.*?\(([^()]+)\)\|.*?\]\]\s*->\s*\[\[#.*?\(([^()]+)\)\|.*?\]\]\s*-\s*\*\*(.*?)\*\*\s*\(`([^`]+)`\)/g)) {
+    const fromId = match[1].trim()
+    const toId = match[2].trim()
+    const label = match[3].trim()
+    const kindField = match[4].trim()
+    const kind = readEdgeKind(kindField) ? kindField : 'related'
+    if (existingPairs.has(`${fromId}->${toId}`)) continue
+    operations.push({ op: 'connectNodes', fromId, toId, kind, label })
+    existingPairs.add(`${fromId}->${toId}`)
+  }
+  return operations
+}
+
+export function parseObsidianMarkdownPatch(text: string, index?: CanvasIndex): { patch: AiPatch | null; errors: string[] } {
+  const markdown = text.trim()
+  const looksLikeObsidianExport =
+    markdown.startsWith('---') && markdown.includes('type: canvas-context') && markdown.includes('## Nodes')
+  if (!looksLikeObsidianExport) return { patch: null, errors: ['Input is not a Serenity Obsidian Markdown export.'] }
+
+  const operations = [
+    ...parseObsidianNodes(markdown, index),
+    ...parseObsidianEdges(markdown, index),
+  ]
+  if (!operations.length) return { patch: null, errors: ['No nodes or edges were found in the Obsidian Markdown.'] }
+  return {
+    patch: {
+      version: 1,
+      intent: 'Import Serenity Obsidian Markdown',
+      operations,
+    },
+    errors: [],
+  }
+}
+
+export function parsePatchText(text: string, index?: CanvasIndex): { patch: AiPatch | null; errors: string[]; format: 'json' | 'obsidian' } {
+  const trimmed = text.trim()
+  if (trimmed.startsWith('{')) return { ...parseAiPatch(trimmed), format: 'json' }
+  return { ...parseObsidianMarkdownPatch(trimmed, index), format: 'obsidian' }
+}
+
 function validateOperationShape(op: unknown, index: number, errors: string[]) {
   if (!isRecord(op)) {
     errors.push(`Operation ${index + 1} must be an object.`)

@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   ArrowRight,
-  AlignLeft,
   Bot,
   Braces,
   Check,
@@ -12,13 +11,16 @@ import {
   Plus,
   Download,
   Tags,
+  Trash2,
+  Search,
   Upload,
   X,
 } from 'lucide-react'
-import { type Editor, Tldraw } from 'tldraw'
-import { exportReadableContext } from '../ai/context'
-import { applyAiPatch, parseAiPatch, summarizePatch, validatePatchForEditor } from '../ai/patch'
+import { type Editor, type TLShapeId, Tldraw } from 'tldraw'
+import { exportObsidianMarkdown } from '../ai/context'
+import { applyAiPatch, parsePatchText, summarizePatch, validatePatchForEditor } from '../ai/patch'
 import {
+  buildCanvasIndex,
   connectLearningCards,
   createLearningCard,
   getCardData,
@@ -29,8 +31,9 @@ import {
 } from '../model/learningGraph'
 import { createRoboticsIndustryMap } from '../model/roboticsSeed'
 import { createAiSemiconductorIndustryMap } from '../model/aiSemiconductorSeed'
-import type { AiPatch, LearningStatus, PatchValidationResult } from '../model/types'
+import { SERENITY_META_KEY, type AiPatch, type LearningStatus, type PatchValidationResult } from '../model/types'
 import { loadLocalCanvasSnapshot, saveLocalCanvasSnapshot } from './localCanvasStore'
+import { inspectSerenitySnapshot, isSaveableSerenitySnapshot } from './snapshotGuards'
 
 const STORAGE_KEY = 'serenity:last-ai-context'
 
@@ -59,10 +62,36 @@ function copyText(text: string) {
   void navigator.clipboard?.writeText(text)
 }
 
+function downloadMarkdownFile(filename: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown;charset=utf-8' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function markdownFilename() {
+  const timestamp = new Date().toISOString().replaceAll(/[:.]/g, '-')
+  return `serenity-canvas-${timestamp}.md`
+}
+
+function hasAnyLearningCard(editor: Editor) {
+  return editor.getSnapshot().document.store
+    ? Object.values(editor.getSnapshot().document.store).some((record) => (
+      record.typeName === 'shape' ? Boolean(getCardData(record)) : false
+    ))
+    : false
+}
+
 export function CanvasShell() {
   const [editor, setEditor] = useState<Editor | null>(null)
   const saveTimerRef = useRef<number | null>(null)
   const canSaveSnapshotRef = useRef(false)
+  const saveWarningShownRef = useRef(false)
+  const saveInFlightRef = useRef(false)
+  const saveAgainRef = useRef(false)
+  const importFileInputRef = useRef<HTMLInputElement | null>(null)
   const storeUpdatedAtRef = useRef<string | undefined>(undefined)
   const [inspector, setInspector] = useState<InspectorState | null>(null)
   const [contextText, setContextText] = useState('')
@@ -71,6 +100,8 @@ export function CanvasShell() {
   const [patchValidation, setPatchValidation] = useState<PatchValidationResult | null>(null)
   const [isPatchOpen, setPatchOpen] = useState(false)
   const [isContextOpen, setContextOpen] = useState(false)
+  const [isSearchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const [isStylePanelOpen, setStylePanelOpen] = useState(false)
   const [toast, setToast] = useState('')
 
@@ -83,27 +114,70 @@ export function CanvasShell() {
     setEditor(mountedEditor)
     mountedEditor.updateInstanceState({ isGridMode: true })
 
+    const saveSnapshot = () => {
+      if (saveInFlightRef.current) {
+        saveAgainRef.current = true
+        return
+      }
+
+      const snapshot = mountedEditor.getSnapshot()
+      if (!isSaveableSerenitySnapshot(snapshot)) {
+        if (!saveWarningShownRef.current) {
+          saveWarningShownRef.current = true
+          showToast('跳过空画布保存，避免覆盖本地数据')
+        }
+        return
+      }
+      saveInFlightRef.current = true
+      void saveLocalCanvasSnapshot(snapshot, storeUpdatedAtRef.current).then((result) => {
+        storeUpdatedAtRef.current = result.updatedAt
+        saveWarningShownRef.current = false
+      }).catch(() => {
+        showToast('本地画布保存失败')
+      }).finally(() => {
+        saveInFlightRef.current = false
+        if (saveAgainRef.current) {
+          saveAgainRef.current = false
+          saveTimerRef.current = window.setTimeout(saveSnapshot, 0)
+        }
+      })
+    }
+
+    const seedDefaultCanvas = () => {
+      createRoboticsIndustryMap(mountedEditor)
+      createAiSemiconductorIndustryMap(mountedEditor)
+      syncLearningCardText(mountedEditor)
+      refreshInspector(mountedEditor)
+      saveSnapshot()
+    }
+
     void (async () => {
       canSaveSnapshotRef.current = false
       try {
-        const snapshot = await loadLocalCanvasSnapshot()
-        if (snapshot?.snapshot) {
-          storeUpdatedAtRef.current = snapshot.updatedAt
-          mountedEditor.loadSnapshot(snapshot.snapshot)
-          syncLearningCardText(mountedEditor)
-          refreshInspector(mountedEditor)
+        const stored = await loadLocalCanvasSnapshot()
+        if (stored?.snapshot) {
+          storeUpdatedAtRef.current = stored.updatedAt
+          const health = inspectSerenitySnapshot(stored.snapshot)
+          if (health.ok) {
+            try {
+              mountedEditor.loadSnapshot(stored.snapshot)
+              syncLearningCardText(mountedEditor)
+              refreshInspector(mountedEditor)
+            } catch {
+              showToast('本地画布快照无法加载，已重新初始化')
+            }
+          } else {
+            showToast('本地画布快照为空，已重新初始化')
+          }
         }
-        if (!mountedEditor.getCurrentPageShapes().some((shape) => getCardData(shape))) {
-          createRoboticsIndustryMap(mountedEditor)
-          createAiSemiconductorIndustryMap(mountedEditor)
-          syncLearningCardText(mountedEditor)
-          refreshInspector(mountedEditor)
-          void saveLocalCanvasSnapshot(mountedEditor.getSnapshot(), storeUpdatedAtRef.current).then((result) => {
-            storeUpdatedAtRef.current = result.updatedAt
-          })
+        if (!hasAnyLearningCard(mountedEditor)) {
+          seedDefaultCanvas()
         }
       } catch {
-        showToast('本地画布读取失败，继续使用浏览器缓存')
+        showToast('本地画布读取失败，已重新初始化')
+        if (!hasAnyLearningCard(mountedEditor)) {
+          seedDefaultCanvas()
+        }
       } finally {
         window.setTimeout(() => {
           canSaveSnapshotRef.current = true
@@ -117,11 +191,7 @@ export function CanvasShell() {
       if (!canSaveSnapshotRef.current) return
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
       saveTimerRef.current = window.setTimeout(() => {
-        void saveLocalCanvasSnapshot(mountedEditor.getSnapshot(), storeUpdatedAtRef.current).then((result) => {
-          storeUpdatedAtRef.current = result.updatedAt
-        }).catch(() => {
-          showToast('本地画布保存失败')
-        })
+        saveSnapshot()
       }, 800)
     })
     setTimeout(() => {
@@ -131,6 +201,25 @@ export function CanvasShell() {
   }, [refreshInspector])
 
   const selectedCards = useMemo(() => (editor ? getSelectedLearningCards(editor) : []), [editor, inspector])
+  const searchResults = useMemo(() => {
+    if (!editor) return []
+    const query = searchQuery.trim().toLowerCase()
+    const nodes = [...buildCanvasIndex(editor).nodesById.values()]
+    if (!query) return nodes.slice(0, 8)
+    return nodes
+      .filter((node) => {
+        const haystack = [
+          node.id,
+          node.title,
+          node.summary,
+          node.body,
+          node.status,
+          ...node.tags,
+        ].join(' ').toLowerCase()
+        return haystack.includes(query)
+      })
+      .slice(0, 12)
+  }, [editor, inspector, searchQuery])
 
   function showToast(message: string) {
     setToast(message)
@@ -168,18 +257,56 @@ export function CanvasShell() {
     showToast('已创建学习关系')
   }
 
+  function clearCurrentPage() {
+    if (!editor) return
+    const currentPage = editor.getCurrentPage()
+    const shapeIds = editor.getCurrentPageShapes().map((shape) => shape.id)
+    if (!shapeIds.length) {
+      showToast('当前页面已经为空')
+      return
+    }
+
+    const pageMeta = currentPage.meta as Record<string, unknown>
+    const existingSerenityMeta = pageMeta[SERENITY_META_KEY]
+    const serenityPageMeta =
+      existingSerenityMeta && typeof existingSerenityMeta === 'object' && !Array.isArray(existingSerenityMeta)
+        ? existingSerenityMeta
+        : {}
+
+    editor.markHistoryStoppingPoint('clear-current-page')
+    editor.run(() => {
+      editor.updatePage({
+        id: currentPage.id,
+        meta: {
+          ...pageMeta,
+          [SERENITY_META_KEY]: {
+            ...serenityPageMeta,
+            kind: 'serenity-page',
+            allowEmpty: true,
+            clearedAt: new Date().toISOString(),
+          },
+        },
+      })
+      editor.deleteShapes(shapeIds)
+      editor.selectNone()
+    })
+    refreshInspector(editor)
+    showToast('当前页面已清空，可撤销恢复')
+  }
+
   function exportContext() {
     if (!editor) return
     syncLearningCardText(editor)
-    const text = exportReadableContext(editor)
+    const text = exportObsidianMarkdown(editor)
     setContextText(text)
     localStorage.setItem(STORAGE_KEY, text)
+    downloadMarkdownFile(markdownFilename(), text)
     setContextOpen(true)
   }
 
   function parsePatchFromInput(nextText = patchText) {
     if (!editor) return
-    const parsed = parseAiPatch(nextText)
+    const parsed = parsePatchText(nextText, buildCanvasIndex(editor))
     if (!parsed.patch) {
       setPatch(null)
       setPatchValidation({ ok: false, errors: parsed.errors, warnings: [] })
@@ -190,6 +317,25 @@ export function CanvasShell() {
     setPatchValidation(validation)
   }
 
+  async function importMarkdownFile(file?: File) {
+    if (!file) return
+    const text = await file.text()
+    setPatchText(text)
+    parsePatchFromInput(text)
+  }
+
+  function focusSearchResult(shapeId: string) {
+    if (!editor) return
+    const typedShapeId = shapeId as TLShapeId
+    editor.select(typedShapeId)
+    const bounds = editor.getShapePageBounds(typedShapeId)
+    if (bounds) {
+      editor.zoomToBounds(bounds, { animation: { duration: 220 }, inset: 96 })
+    }
+    refreshInspector(editor)
+    setSearchOpen(false)
+  }
+
   function applyPatch() {
     if (!editor || !patch) return
     const result = applyAiPatch(editor, patch)
@@ -198,7 +344,7 @@ export function CanvasShell() {
       setPatchOpen(false)
       setPatchText('')
       setPatch(null)
-      showToast('AI Patch 已应用')
+      showToast('Obsidian Markdown 已导入')
     }
   }
 
@@ -243,23 +389,80 @@ export function CanvasShell() {
         <button title="连接两个选中卡片" onClick={connectSelection}>
           <ArrowRight size={18} />
         </button>
+        <button title="清空当前页面" onClick={clearCurrentPage}>
+          <Trash2 size={18} />
+        </button>
         <button title="从选中节点发散" onClick={addCard}>
           <GitBranch size={18} />
         </button>
         <button
           className={isStylePanelOpen ? 'is-active' : ''}
           title="形状/样式"
-          onClick={() => setStylePanelOpen((value) => !value)}
+          onClick={() => {
+            setStylePanelOpen((value) => !value)
+            setSearchOpen(false)
+          }}
         >
           <Palette size={18} />
         </button>
-        <button title="导出 AI Context" onClick={exportContext}>
-          <Upload size={18} />
+        <button
+          className={isSearchOpen ? 'is-active' : ''}
+          type="button"
+          title="搜索节点"
+          aria-label="搜索节点"
+          aria-expanded={isSearchOpen}
+          aria-controls="node-search-popover"
+          onClick={() => {
+            setSearchOpen((value) => !value)
+            setStylePanelOpen(false)
+          }}
+        >
+          <Search size={18} />
         </button>
-        <button title="导入 AI Patch" onClick={() => setPatchOpen(true)}>
+        <button title="导入 Obsidian Markdown" onClick={() => setPatchOpen(true)}>
           <Download size={18} />
         </button>
+        <button title="导出 Obsidian Markdown" onClick={exportContext}>
+          <Upload size={18} />
+        </button>
       </aside>
+
+      {isSearchOpen && (
+        <div className="search-popover" id="node-search-popover">
+          <div className="search-popover-header">
+            <strong>搜索节点</strong>
+            <span>{searchResults.length} 个结果</span>
+          </div>
+          <div className="search-box">
+            <Search size={15} />
+            <input
+              autoFocus
+              aria-label="搜索节点"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="标题、正文、标签或 ID"
+            />
+            {searchQuery && (
+              <button type="button" title="清空搜索" aria-label="清空搜索" onClick={() => setSearchQuery('')}>
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <div className="search-results">
+            {searchResults.length ? (
+              searchResults.map((node) => (
+                <button key={node.id} type="button" onClick={() => focusSearchResult(node.shapeId)}>
+                  <strong>{node.title}</strong>
+                  <span>{node.summary || node.body || node.id}</span>
+                  <code>{node.tags.length ? node.tags.join(', ') : node.status}</code>
+                </button>
+              ))
+            ) : (
+              <p role="status">没有匹配的节点</p>
+            )}
+          </div>
+        </div>
+      )}
 
       <aside className="inspector">
         <div className="inspector-header">
@@ -355,13 +558,6 @@ export function CanvasShell() {
               </div>
             </section>
 
-            <section className="inspector-section guide-section">
-              <div className="section-heading">
-                <AlignLeft size={15} />
-                <span>AI 读取方式</span>
-              </div>
-              <p>标题、摘要、正文、标签和连线会进入 AI Context；卡片上只显示标题与摘要。</p>
-            </section>
             <button className="primary-action" onClick={saveInspector}>
               <Check size={16} />
               保存
@@ -379,28 +575,45 @@ export function CanvasShell() {
 
       {isContextOpen && (
         <div className="modal-backdrop">
-          <section className="context-modal">
-            <header>
+          <section className="context-modal markdown-modal">
+            <header className="markdown-modal-header">
               <div>
-                <h2>AI Context</h2>
-                <p>当前画布的 AI 可读语义上下文。</p>
+                <span className="modal-kicker">Export</span>
+                <h2>Obsidian Markdown</h2>
+                <p>当前画布已转换为可放入 Obsidian 的 Markdown。</p>
               </div>
-              <button title="关闭" onClick={() => setContextOpen(false)}>
+              <button type="button" title="关闭" aria-label="关闭导出弹窗" onClick={() => setContextOpen(false)}>
                 <X size={18} />
               </button>
             </header>
-            <textarea readOnly className="context-modal-output" value={contextText} />
-            <footer>
-              <button onClick={() => setContextOpen(false)}>关闭</button>
+            <div className="markdown-modal-grid">
+              <aside className="markdown-side-panel">
+                <div>
+                  <span>文件类型</span>
+                  <strong>.md / text/markdown</strong>
+                </div>
+                <div>
+                  <span>包含内容</span>
+                  <strong>Properties、节点、关系、Mermaid</strong>
+                </div>
+                <div>
+                  <span>Obsidian 特性</span>
+                  <strong>[[内链]]、#tags、callout</strong>
+                </div>
+              </aside>
+              <textarea readOnly className="context-modal-output markdown-textarea" value={contextText} />
+            </div>
+            <footer className="markdown-modal-footer">
+              <button type="button" onClick={() => setContextOpen(false)}>关闭</button>
               <button
                 className="primary-action"
                 onClick={() => {
                   copyText(contextText)
-                  showToast('AI Context 已复制')
+                  showToast('Obsidian Markdown 已复制')
                 }}
               >
                 <Braces size={16} />
-                复制上下文
+                复制 Markdown
               </button>
             </footer>
           </section>
@@ -409,26 +622,41 @@ export function CanvasShell() {
 
       {isPatchOpen && (
         <div className="modal-backdrop">
-          <section className="patch-modal">
-            <header>
+          <section className="patch-modal markdown-modal import-markdown-modal">
+            <header className="markdown-modal-header">
               <div>
-                <h2>AI Patch</h2>
-                <p>粘贴 JSON patch，校验通过后再应用。</p>
+                <span className="modal-kicker">Import</span>
+                <h2>Obsidian Markdown</h2>
+                <p>粘贴或选择 Serenity 导出的 Markdown，校验通过后再应用。</p>
               </div>
-              <button title="关闭" onClick={() => setPatchOpen(false)}>
+              <button type="button" title="关闭" aria-label="关闭导入弹窗" onClick={() => setPatchOpen(false)}>
                 <X size={18} />
               </button>
             </header>
-            <textarea
-              className="patch-input"
-              value={patchText}
-              onChange={(event) => {
-                setPatchText(event.target.value)
-                parsePatchFromInput(event.target.value)
-              }}
-              placeholder='{"version":1,"operations":[{"op":"addNode","title":"新的概念"}]}'
-            />
-            <div className="patch-preview">
+            <div className="import-modal-grid">
+              <aside className="markdown-side-panel import-source-panel">
+                <div>
+                  <span>输入来源</span>
+                  <strong>粘贴 Markdown 或选择 .md 文件</strong>
+                </div>
+                <button type="button" onClick={() => importFileInputRef.current?.click()}>
+                  <Download size={15} />
+                  选择 Markdown
+                </button>
+                <p>会转换为节点更新、新增节点和关系连接，再交给 Serenity 校验。</p>
+              </aside>
+              <textarea
+                className="patch-input markdown-textarea"
+                value={patchText}
+                onChange={(event) => {
+                  setPatchText(event.target.value)
+                  parsePatchFromInput(event.target.value)
+                }}
+                placeholder={'---\ntitle: "Serenity Canvas Export"\ntype: canvas-context\n---\n\n## Nodes\n### 新的概念 (node-new-concept)'}
+              />
+            </div>
+            <div className="patch-preview markdown-preview-panel">
+              <strong>操作预览</strong>
               {patch ? summarizePatch(patch).map((line) => <p key={line}>{line}</p>) : <p>暂无可预览操作。</p>}
             </div>
             {patchValidation && (
@@ -437,8 +665,18 @@ export function CanvasShell() {
                 {patchValidation.warnings.length ? `\n${patchValidation.warnings.join('\n')}` : ''}
               </div>
             )}
-            <footer>
-              <button onClick={() => parsePatchFromInput()}>校验</button>
+            <footer className="markdown-modal-footer">
+              <input
+                ref={importFileInputRef}
+                type="file"
+                accept=".md,text/markdown,text/plain"
+                hidden
+                onChange={(event) => {
+                  void importMarkdownFile(event.target.files?.[0])
+                  event.target.value = ''
+                }}
+              />
+              <button type="button" onClick={() => parsePatchFromInput()}>校验</button>
               <button className="primary-action" disabled={!patchValidation?.ok || !patch} onClick={applyPatch}>
                 <Check size={16} />
                 应用

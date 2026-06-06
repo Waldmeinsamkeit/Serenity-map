@@ -90,6 +90,11 @@ button {
   background: #eef3f6;
 }
 
+.tool-rail button:focus-visible {
+  outline: 3px solid rgba(47, 111, 101, 0.28);
+  outline-offset: 2px;
+}
+
 .inspector {
   position: absolute;
   top: 18px;
@@ -115,6 +120,150 @@ button {
   gap: 12px;
   padding: 4px 2px 8px;
   border-bottom: 1px solid rgba(211, 218, 224, 0.72);
+}
+
+.search-box button:focus-visible,
+.search-results button:focus-visible,
+.import-source-panel button:focus-visible,
+.markdown-modal-footer button:focus-visible {
+  outline: 3px solid rgba(47, 111, 101, 0.28);
+  outline-offset: 2px;
+}
+
+.search-popover {
+  position: absolute;
+  top: 72px;
+  left: 72px;
+  display: grid;
+  gap: 10px;
+  width: min(340px, calc(100vw - 108px));
+  min-width: 280px;
+  padding: 10px;
+  border: 1px solid rgba(192, 203, 211, 0.86);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 44px rgba(31, 36, 44, 0.18);
+  z-index: 12;
+}
+
+.search-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 2px;
+}
+
+.search-popover-header strong {
+  color: #25303c;
+  font-size: 13px;
+}
+
+.search-popover-header span {
+  color: #68737c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.search-box {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 9px;
+  border: 1px solid #cfd8de;
+  border-radius: 6px;
+  color: #58636d;
+  background: #f8fafb;
+}
+
+.search-box:focus-within {
+  border-color: #8fb4ac;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(47, 111, 101, 0.1);
+}
+
+.search-box input {
+  min-width: 0;
+  height: 36px;
+  border: 0;
+  color: #20242a;
+  background: transparent;
+  outline: none;
+}
+
+.search-box button {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 6px;
+  color: #5b6670;
+  background: transparent;
+}
+
+.search-box button:hover {
+  background: #edf3f5;
+}
+
+.search-results {
+  display: grid;
+  gap: 6px;
+  max-height: 312px;
+  overflow: auto;
+}
+
+.search-results button {
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  padding: 10px;
+  border: 1px solid #d8e0e5;
+  border-radius: 6px;
+  color: #20242a;
+  background: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease;
+}
+
+.search-results button:hover {
+  border-color: #9cb8b2;
+  background: #f1f8f6;
+  transform: translateY(-1px);
+}
+
+.search-results strong {
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-results span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #68737c;
+  font-size: 12px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.search-results code {
+  color: #2f6f65;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 10px;
+}
+
+.search-results p {
+  margin: 0;
+  padding: 12px;
+  color: #68737c;
+  font-size: 12px;
+  text-align: center;
 }
 
 .panel-title {
@@ -364,18 +513,6 @@ button {
   background: #e3f2ee;
 }
 
-.guide-section {
-  background: #f9fbfb;
-}
-
-.guide-section p {
-  margin: 0;
-  color: #68737c;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.55;
-}
-
 .primary-action {
   display: inline-flex;
   align-items: center;
@@ -436,6 +573,121 @@ button {
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 24px 70px rgba(31, 36, 44, 0.24);
+}
+
+.markdown-modal {
+  gap: 14px;
+  padding: 18px;
+}
+
+.markdown-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e1e6ea;
+}
+
+.modal-kicker {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 6px;
+  padding: 3px 7px;
+  border: 1px solid #c8dbd6;
+  border-radius: 999px;
+  color: #2f6f65;
+  background: #edf8f5;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.markdown-modal-grid,
+.import-modal-grid {
+  display: grid;
+  grid-template-columns: minmax(196px, 0.34fr) minmax(0, 1fr);
+  gap: 14px;
+  min-height: 0;
+}
+
+.markdown-side-panel {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #d9e2e7;
+  border-radius: 8px;
+  background: #f8fbfb;
+}
+
+.markdown-side-panel div {
+  display: grid;
+  gap: 4px;
+}
+
+.markdown-side-panel span {
+  color: #6c7780;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.markdown-side-panel strong {
+  color: #25303c;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.markdown-side-panel p {
+  margin: 0;
+  color: #68737c;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.import-source-panel button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: #ffffff;
+  background: #2f6f65;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background-color 180ms ease, transform 180ms ease;
+}
+
+.import-source-panel button:hover {
+  background: #245b52;
+  transform: translateY(-1px);
+}
+
+.markdown-textarea {
+  min-height: 100%;
+  scrollbar-color: #c3d0d6 transparent;
+}
+
+.markdown-preview-panel {
+  display: grid;
+  gap: 6px;
+  max-height: 132px;
+  overflow: auto;
+}
+
+.markdown-preview-panel strong {
+  color: #29333d;
+  font-size: 12px;
+}
+
+.markdown-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
 }
 
 .context-modal {
@@ -597,9 +849,51 @@ button {
     grid-auto-flow: column;
   }
 
+  .search-popover {
+    top: 116px;
+    left: 12px;
+    width: calc(100vw - 24px);
+    min-width: 0;
+  }
+
   .tlui-style-panel__wrapper {
     top: 116px;
     left: 12px;
     max-height: 38vh;
+  }
+
+  .context-modal,
+  .patch-modal {
+    width: min(96vw, 620px);
+    max-height: 88vh;
+    padding: 14px;
+  }
+
+  .markdown-modal-header,
+  .context-modal header,
+  .patch-modal header {
+    align-items: flex-start;
+  }
+
+  .markdown-modal-grid,
+  .import-modal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .markdown-side-panel {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+
+  .markdown-textarea,
+  .patch-input {
+    min-height: 240px;
+  }
+
+  .markdown-modal-footer {
+    flex-wrap: wrap;
+  }
+
+  .markdown-modal-footer button {
+    min-height: 40px;
   }
 }

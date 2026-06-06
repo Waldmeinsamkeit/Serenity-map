@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "intent": "Add an industry research chain to the Serenity canvas.",
+  "operations": [
+    {
+      "op": "addNode",
+      "id": "node-industry-example",
+      "title": "Industry theme",
+      "summary": "One-sentence visible summary.",
+      "body": "Market narrative, system change, and research scope.",
+      "tags": ["industry", "narrative"],
+      "status": "seed",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "op": "addNode",
+      "id": "node-bottleneck-example",
+      "title": "Scarce layer",
+      "summary": "Why this layer is hard to scale.",
+      "body": "Evidence, risks, and next checks.",
+      "tags": ["bottleneck", "layer"],
+      "status": "exploring",
+      "x": 380,
+      "y": 0,
+      "connectFromId": "node-industry-example",
+      "edgeKind": "contains",
+      "edgeLabel": "contains"
+    }
+  ]
+}

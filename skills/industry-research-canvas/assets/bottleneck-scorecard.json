@@ -1,0 +1,39 @@
+{
+  "topic": "Example industry or company",
+  "market": "A-share/HK/US/global",
+  "notes": "Rate factors from 0 to 5. 0 = absent, 5 = very strong.",
+  "factors": {
+    "demand_pressure": 0,
+    "bottleneck_severity": 0,
+    "supplier_concentration": 0,
+    "expansion_difficulty": 0,
+    "company_closeness": 0,
+    "evidence_quality": 0,
+    "financial_quality": 0,
+    "timing_visibility": 0
+  },
+  "penalties": {
+    "valuation_already_priced": 0,
+    "governance_or_financing": 0,
+    "accounting_quality": 0,
+    "cyclicality": 0,
+    "substitution_risk": 0,
+    "liquidity_or_hype": 0
+  },
+  "evidence": [
+    {
+      "claim": "",
+      "source": "",
+      "strength": "Strong/Medium/Weak/Needs checking"
+    }
+  ],
+  "what_could_weaken_view": [
+    "",
+    "",
+    ""
+  ],
+  "canvas_mapping": {
+    "node_type": "industry/layer/bottleneck/company/evidence/risk/next-check",
+    "suggested_status": "seed/exploring/verified/question"
+  }
+}
