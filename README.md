@@ -1,169 +1,114 @@
-# Serenity 人机协作学习画布
+# Serenity Learning Canvas
 
-Serenity 是一个基于 React、TypeScript、Vite 和 tldraw SDK 构建的无限画布应用。它面向学习场景中的人机协作：用户用卡片和连线组织知识结构，AI 可以通过导出的语义上下文理解当前思维导图，并通过受约束的 JSON Patch 请求修改画布。
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=fff)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=fff)](https://vite.dev/)
+[![tldraw](https://img.shields.io/badge/tldraw-4-black)](https://www.tldraw.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
+[![Linux.do](https://img.shields.io/badge/Linux.do-Community-1D9BF0)](https://linux.do/)
 
-第一版不内置 agent、不调用模型、不保存 API key。项目只专注两件事：
+> 中文 | [English](#english)
 
-- 把学习节点、关系和画布结构画清楚。
-- 提供 AI 能读懂、能请求修改、但不能绕过 schema 的协议层。
+## 目录
 
-## 功能概览
+- [项目简介](#项目简介)
+- [功能特性](#功能特性)
+- [环境依赖](#环境依赖)
+- [快速安装](#快速安装)
+- [使用示例](#使用示例)
+- [配置说明](#配置说明)
+- [常见问题](#常见问题)
+- [开源协议](#开源协议)
+- [联系方式](#联系方式)
+- [English](#english)
+
+## 项目简介
+
+Serenity Learning Canvas 是一个面向人机协作学习与研究的本地无限画布应用。用户可以用卡片和语义连线组织知识结构，AI 或 MCP 客户端可以读取结构化上下文，并通过受约束的 AI Patch 或 Obsidian Markdown 导入导出流程更新画布。
+
+| 项目 | 信息 |
+|---|---|
+| 项目名称 | Serenity Learning Canvas |
+| 项目用途 | 本地知识画布、学习地图、行业研究地图、AI 可读上下文与安全 Patch 协议 |
+| 技术栈 | React 19, TypeScript, Vite, tldraw, Node.js, MCP SDK, Vitest |
+
+第一版专注于画布与协议层：不内置模型调用，不托管 API Key，不绑定云端账号。
+
+## 功能特性
 
 - 无限画布：基于 tldraw，支持缩放、拖拽、选择、编辑、箭头和连线。
-- 学习卡片：每个卡片保存标题、摘要、正文、标签、状态和 AI 可读 metadata。
-- 语义连线：支持表达相关、延伸、包含、对比、疑问等学习关系。
-- Obsidian Markdown 导出：导出节点、边、选中节点、一跳/二跳上下文、wikilink、tags、frontmatter 和 Mermaid 逻辑图。
-- Obsidian Markdown / AI Patch 导入：支持从 `.md` 或 JSON patch 新增、更新、删除、连接、断开连接、移动节点，并在应用前校验和预览。
-- 本地保存：通过本地 Node API 将画布快照保存到根目录 `store/`。
+- 学习卡片：每张卡片包含标题、摘要、正文、标签、状态和 AI 可读 metadata。
+- 语义连线：支持 `contains`、`causes`、`supports`、`questions`、`blocks`、`related` 等关系类型。
+- AI Context：将当前画布导出为 AI 可读的结构化节点、边、邻域和 Mermaid 图。
+- AI Patch：使用 JSON Patch 风格操作安全地新增、更新、删除、连接、断开或移动节点。
+- Obsidian Markdown：支持 vault-ready Markdown 导出与导入，包含 frontmatter、wikilink、tags 和 Mermaid。
+- 本地保存：通过 Node 本地存储 API 将画布快照保存到 `store/canvas-default.json`。
+- MCP Server：提供本地 stdio MCP 服务，方便 agent 读取上下文、导出 Markdown、校验和应用 Patch。
 
-## 目录结构
+## 环境依赖
 
-```text
-serenity/
-  scripts/
-    dev.mjs              # 同时启动 Vite 和本地存储 API
-    store-api.mjs        # 本地 Node API，读写 store/canvas-default.json
-  src/
-    ai/                  # AI Context / Obsidian Markdown 导出、patch 解析和校验
-    canvas/              # tldraw 画布封装、本地存储客户端
-    model/               # 学习节点、边、snapshot 和语义图模型
-    App.tsx
-    main.tsx
-    styles.css
-  store/                 # 本地画布数据目录
-  package.json
-  vite.config.ts
-```
+请确保本机已安装：
 
-## 安装依赖
+- Node.js 20 或更高版本
+- npm 10 或更高版本
+- Git
+
+可选依赖：
+
+- Obsidian，用于查看导出的 Markdown 知识库文件
+- 支持 MCP 的 agent 客户端，用于连接 Serenity MCP Server
+
+## 快速安装
 
 ```bash
-npm install
-```
-
-## 别人如何下载和使用
-
-如果你把这个项目上传到 GitHub 或其他 Git 仓库，别人使用时不需要下载 `node_modules/`。正确流程是：
-
-```bash
-git clone <你的仓库地址>
+git clone <your-repository-url>
 cd serenity
 npm install
 npm run dev
 ```
 
-Windows 下也可以在安装依赖后双击：
+启动后默认访问：
+
+- 前端应用：`http://localhost:5173/`
+- 本地存储 API：`http://localhost:8787/`
+
+Windows 用户也可以在安装依赖后双击：
 
 ```text
 start-serenity.bat
 ```
 
-项目会优先打开：
+## 使用示例
 
-- 前端画布：`http://localhost:5173/`
-- 本地存储 API：`http://localhost:8787/`
-
-如果端口已被占用，启动脚本会自动选择新的可用端口，并在终端窗口里显示实际地址。
-
-需要提交到 Git 的是源码和配置，例如：
-
-- `package.json`
-- `package-lock.json`
-- `src/`
-- `scripts/`
-- `skills/`
-- `README.md`
-- `start-serenity.bat`
-- `vite.config.ts`
-
-不需要提交：
-
-- `node_modules/`
-- `dist/`
-- `.npm-cache/`
-- `store/`
-- `*.log`
-- `*.err`
-
-原因是 `node_modules/` 可以通过 `npm install` 自动恢复，`store/` 是每个用户自己的本地画布数据。
-
-## 启动开发环境
+### 启动开发环境
 
 ```bash
 npm run dev
 ```
 
-Windows 下也可以直接双击根目录的 `start-serenity.bat`。
+该命令会同时启动 Vite 前端服务和本地存储 API。
 
-这个命令会同时启动：
+### 单独启动前端
 
-- Vite 前端服务，优先使用 `http://localhost:5173/`
-- 本地存储 API，优先使用 `http://localhost:8787/`
-
-如果端口已被占用，启动脚本会自动顺延选择可用端口，并在终端里打印实际地址。Vite 会把前端的 `/api` 请求代理到本地存储 API。
-
-## 使用方式
-
-1. 打开 `http://localhost:5173/`。
-2. 使用左上角工具栏新增学习卡片、连接两个选中的卡片，或从当前节点发散创建新节点。
-3. 选中单个卡片后，在右侧检查器编辑标题、摘要、正文、标签和状态。
-4. 点击导出 Obsidian Markdown，下载并预览当前画布的 vault-ready Markdown。
-5. 点击导入 Obsidian Markdown，粘贴 `.md` 内容或选择文件，校验通过后应用到画布。
-6. 按住空格键会临时切换为手型工具，用来拖动画布；松开后恢复原工具。
-
-## 本地数据保存
-
-运行 `npm run dev` 时，画布会在变化后自动防抖保存到：
-
-```text
-store/canvas-default.json
+```bash
+npm run dev:vite
 ```
 
-应用启动时会优先读取这个文件来恢复画布。如果只运行 `npm run dev:vite`，前端仍能打开，但不会启动本地 Node API，也就不能写入 `store/`。
+仅启动前端时，应用可以打开，但不会写入本地 `store/` 快照。
 
-也可以单独启动本地存储 API：
+### 单独启动本地存储 API
 
 ```bash
 npm run store
 ```
 
-## AI Context
-
-AI Context 是给模型阅读的结构化画布摘要，包含：
-
-- 当前画布摘要
-- 所有学习节点的稳定 id、标题、内容、标签、状态和位置
-- 所有连线和关系类型
-- 当前选中节点
-- 选中节点的一跳和二跳上下文
-- Mermaid/Markdown 风格的轻量逻辑图文本
-
-它用于让 AI 理解你的思维导图，但不会触发任何模型调用。
-
-## AI Patch
-
-AI Patch 是给模型请求修改画布的 JSON 合约。当前支持的操作包括：
-
-- `addNode`
-- `updateNode`
-- `deleteNode`
-- `connectNodes`
-- `disconnectNodes`
-- `moveNode`
-
-Patch 会先经过解析、schema 校验、悬空连线检查、重复 id 检查和预览，然后才允许应用。AI 不能直接执行代码，也不能绕过 schema 修改画布。
-
-## MCP Server
-
-Serenity 提供一个本地 `stdio` MCP Server，方便 agent 读取画布语义图、导出 AI Context / Obsidian Markdown、校验 AI Patch 或 Markdown 导入，并在校验通过后写入本地画布快照。
-
-启动命令：
+### 启动 MCP Server
 
 ```bash
 npm run mcp
 ```
 
-agent 配置示例：
+MCP 客户端配置示例：
 
 ```json
 {
@@ -176,51 +121,323 @@ agent 配置示例：
 }
 ```
 
-可用工具：
+### AI Patch 示例
 
-- `serenity_health`：返回项目路径、store 文件路径、快照状态、节点和边数量。
-- `serenity_get_context`：返回 AI 可读语义上下文，支持 `json`、`markdown` 和 `obsidian`。
-- `serenity_export_obsidian_markdown`：导出 Obsidian 可读取的 Markdown，包含 frontmatter、wikilink、tags、Mermaid、节点和边。
-- `serenity_get_snapshot`：返回原始本地 tldraw 快照。
-- `serenity_validate_patch`：校验 JSON AI Patch 或 Serenity Obsidian Markdown 字符串，不写入文件。
-- `serenity_apply_patch`：校验并应用 JSON AI Patch 或 Serenity Obsidian Markdown 字符串，原子写入 `store/canvas-default.json`。
-- `serenity_validate_markdown_import`：把 Serenity Obsidian Markdown 解析成 AI Patch operations 并校验，不写入文件。
-- `serenity_apply_markdown_import`：解析、校验并应用 Serenity Obsidian Markdown 导入。
-- `serenity_export_patch_template`：返回最小 patch 示例。
+```json
+{
+  "version": 1,
+  "intent": "Add a research node",
+  "operations": [
+    {
+      "op": "addNode",
+      "id": "node-example",
+      "title": "Example Node",
+      "summary": "Short visible summary",
+      "body": "Detailed AI-readable notes.",
+      "tags": ["example"],
+      "status": "exploring",
+      "x": 120,
+      "y": 120
+    }
+  ]
+}
+```
 
-## Obsidian Markdown 导入 / 导出
-
-前端左侧工具栏提供 Obsidian Markdown 导入和导出：
-
-- 导出：调用 `src/ai/context.ts` 中的 `exportObsidianMarkdown(editor)`，生成 `.md` 文件并打开预览弹窗。
-- 导入：支持粘贴 Markdown 或选择 `.md` 文件，调用 `src/ai/patch.ts` 中的 `parsePatchText(...)`，转换成 AI Patch operations，预览并校验后再应用。
-
-MCP 侧使用同一套 Node core 合约：
-
-- `exportObsidianMarkdownFromSnapshot(snapshot)`：从本地快照导出 vault-ready Markdown。
-- `parsePatchTextInput(input, snapshot)`：同时接受 JSON AI Patch 和 Serenity Obsidian Markdown。
-- 已存在 id 的 Markdown 节点会变成 `updateNode`，新 id 会变成 `addNode`。
-- Markdown 中新的关系会变成 `connectNodes`，重复的 `fromId -> toId` 会跳过。
-
-Obsidian Markdown 适合知识库留档、人工编辑和 round-trip；JSON AI Patch 仍适合 agent 直接、安全地修改画布。
-
-## 构建和测试
+### 构建与测试
 
 ```bash
 npm run build
-npm run test
+npm test
 ```
 
-`npm run build` 会执行 TypeScript 构建和 Vite 生产构建。
+## 配置说明
 
-## 项目边界
+### 端口配置
 
-Serenity 当前是一个协作界面和协议层，不负责：
+本地存储 API 默认使用 `8787` 端口。可以通过环境变量覆盖：
 
-- agent 编排
-- 联网搜索
-- 模型调用
-- API key 管理
-- 多人实时协作后端
+```bash
+SERENITY_STORE_PORT=8790 npm run dev
+```
 
-这些能力可以在后续版本中接入，但第一版会保持画布和语义协议本身足够清晰、稳定和可验证。
+Windows PowerShell 示例：
+
+```powershell
+$env:SERENITY_STORE_PORT="8790"
+npm run dev
+```
+
+### 本地数据目录
+
+画布快照默认保存到：
+
+```text
+store/canvas-default.json
+```
+
+`store/` 是本地用户数据目录，默认不建议提交到 Git。
+
+### 不建议提交的文件
+
+```text
+node_modules/
+dist/
+.npm-cache/
+.env
+store/
+reports/
+*.log
+*.err
+```
+
+## 常见问题
+
+### 页面刷新后画布为空怎么办？
+
+请确认同时启动了本地存储 API：
+
+```bash
+npm run dev
+```
+
+如果只运行 `npm run dev:vite`，前端不会写入 `store/canvas-default.json`。
+
+### 为什么 AI 不能直接修改画布？
+
+Serenity 使用 AI Patch 合约进行受约束修改。Patch 会先经过解析、schema 校验、悬空连线检查、重复 ID 检查和预览，再允许应用到画布。
+
+### Obsidian Markdown 导入失败怎么办？
+
+请确认 Markdown 来自 Serenity 的 Obsidian 导出格式，并包含：
+
+- YAML frontmatter
+- `type: canvas-context`
+- `## Nodes`
+- 节点 ID、状态、标签和正文区块
+
+### MCP 读取的不是当前页面怎么办？
+
+MCP 默认读取本地快照中的 `snapshot.session.currentPageId`。切换页面后，请确保前端已完成自动保存，或通过页面刷新确认当前页状态已写入 `store/canvas-default.json`。
+
+## 开源协议
+
+本项目采用 MIT License 开源，详见 [LICENSE](./LICENSE)。
+
+## 联系方式
+
+- GitHub Issues: `<your-repository-url>/issues`
+- Linux.do Community: <https://linux.do/>
+- Email: `<your-email@example.com>`
+
+
+
+---
+
+## English
+
+## Project Overview
+
+Serenity Learning Canvas is a local infinite-canvas application for human-AI collaborative learning and research. Users organize ideas with cards and semantic edges, while AI or MCP clients can read structured context and update the canvas through constrained AI Patch or Obsidian Markdown import/export workflows.
+
+| Item | Details |
+|---|---|
+| Project Name | Serenity Learning Canvas |
+| Purpose | Local knowledge canvas, learning map, industry research map, AI-readable context, and safe Patch protocol |
+| Tech Stack | React 19, TypeScript, Vite, tldraw, Node.js, MCP SDK, Vitest |
+
+The first version focuses on the canvas and protocol layer. It does not call models, host API keys, or require a cloud account.
+
+## Features
+
+- Infinite canvas powered by tldraw, with zooming, panning, editing, arrows, and connections.
+- Learning cards with title, summary, body, tags, status, and AI-readable metadata.
+- Semantic edges such as `contains`, `causes`, `supports`, `questions`, `blocks`, and `related`.
+- AI Context export with structured nodes, edges, neighborhoods, and Mermaid diagrams.
+- AI Patch operations for safely adding, updating, deleting, connecting, disconnecting, and moving nodes.
+- Obsidian Markdown export/import with frontmatter, wikilinks, tags, and Mermaid.
+- Local persistence through a Node storage API at `store/canvas-default.json`.
+- Local stdio MCP Server for agents to read context, export Markdown, validate patches, and apply updates.
+
+## Requirements
+
+Make sure the following tools are installed:
+
+- Node.js 20 or later
+- npm 10 or later
+- Git
+
+Optional tools:
+
+- Obsidian, for viewing exported Markdown notes
+- An MCP-compatible agent client, for connecting to the Serenity MCP Server
+
+## Quick Start
+
+```bash
+git clone <your-repository-url>
+cd serenity
+npm install
+npm run dev
+```
+
+Default URLs:
+
+- Frontend app: `http://localhost:5173/`
+- Local storage API: `http://localhost:8787/`
+
+On Windows, after installing dependencies, you can also double-click:
+
+```text
+start-serenity.bat
+```
+
+## Usage Examples
+
+### Start Development
+
+```bash
+npm run dev
+```
+
+This starts both the Vite frontend and the local storage API.
+
+### Start Frontend Only
+
+```bash
+npm run dev:vite
+```
+
+The app can open in frontend-only mode, but it will not write snapshots to `store/`.
+
+### Start Storage API Only
+
+```bash
+npm run store
+```
+
+### Start MCP Server
+
+```bash
+npm run mcp
+```
+
+Example MCP client configuration:
+
+```json
+{
+  "mcpServers": {
+    "serenity": {
+      "command": "node",
+      "args": ["E:\\repo\\serenity\\scripts\\serenity-mcp.mjs"]
+    }
+  }
+}
+```
+
+### AI Patch Example
+
+```json
+{
+  "version": 1,
+  "intent": "Add a research node",
+  "operations": [
+    {
+      "op": "addNode",
+      "id": "node-example",
+      "title": "Example Node",
+      "summary": "Short visible summary",
+      "body": "Detailed AI-readable notes.",
+      "tags": ["example"],
+      "status": "exploring",
+      "x": 120,
+      "y": 120
+    }
+  ]
+}
+```
+
+### Build And Test
+
+```bash
+npm run build
+npm test
+```
+
+## Configuration
+
+### Port
+
+The local storage API uses port `8787` by default. Override it with:
+
+```bash
+SERENITY_STORE_PORT=8790 npm run dev
+```
+
+PowerShell example:
+
+```powershell
+$env:SERENITY_STORE_PORT="8790"
+npm run dev
+```
+
+### Local Data Directory
+
+Canvas snapshots are saved to:
+
+```text
+store/canvas-default.json
+```
+
+`store/` contains local user data and should not normally be committed.
+
+### Files To Exclude From Git
+
+```text
+node_modules/
+dist/
+.npm-cache/
+.env
+store/
+reports/
+*.log
+*.err
+```
+
+## FAQ
+
+### The canvas is blank after refresh. What should I check?
+
+Make sure the local storage API is running:
+
+```bash
+npm run dev
+```
+
+If you only run `npm run dev:vite`, the frontend will not write to `store/canvas-default.json`.
+
+### Why can AI not directly mutate the canvas?
+
+Serenity uses a constrained AI Patch contract. A patch is parsed, schema-validated, checked for dangling links and duplicate IDs, previewed, and only then applied to the canvas.
+
+### Obsidian Markdown import fails. What format is required?
+
+Use Markdown exported by Serenity. It should include:
+
+- YAML frontmatter
+- `type: canvas-context`
+- `## Nodes`
+- Node ID, status, tags, and body sections
+
+### MCP reads a different page. Why?
+
+MCP reads the page referenced by `snapshot.session.currentPageId` in the local snapshot. After switching pages in the UI, wait for autosave or refresh to confirm the current page has been written to `store/canvas-default.json`.
+
+## License
+
+This project is released under the MIT License. See [LICENSE](./LICENSE) for details.
+
+## Contact
+
+- GitHub Issues: `<your-repository-url>/issues`
+- Linux.do Community: <https://linux.do/>
+- Email: `<your-email@example.com>`
