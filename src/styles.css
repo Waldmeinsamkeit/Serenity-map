@@ -101,7 +101,7 @@ button {
   right: 18px;
   bottom: 18px;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 12px;
   width: min(372px, calc(100vw - 92px));
   padding: 12px;
@@ -120,6 +120,15 @@ button {
   gap: 12px;
   padding: 4px 2px 8px;
   border-bottom: 1px solid rgba(211, 218, 224, 0.72);
+}
+
+.inspector-header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
 }
 
 .search-box button:focus-visible,
@@ -331,6 +340,124 @@ button {
 .status-archived {
   color: #5c6670;
   background: #eef1f3;
+}
+
+.sync-status-inline,
+.sync-now-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.sync-status-inline {
+  gap: 6px;
+  min-width: 0;
+  max-width: 132px;
+  min-height: 30px;
+  padding: 0 8px;
+  color: #39645d;
+  background: #eef7f4;
+}
+
+.sync-status-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 5px;
+  color: #2f6f65;
+  background: #d9eee9;
+}
+
+.sync-status-inline div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.sync-status-inline strong,
+.sync-status-inline span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-status-inline strong {
+  color: #245b52;
+  font-size: 10px;
+}
+
+.sync-status-inline span {
+  color: #68737c;
+  font-size: 10px;
+}
+
+.sync-now-button {
+  width: 30px;
+  height: 30px;
+  color: #25303c;
+  background: #eef3f6;
+}
+
+.sync-now-button:hover:not(:disabled) {
+  background: #dfe8ec;
+}
+
+.sync-now-button:disabled {
+  color: #8b959d;
+  cursor: not-allowed;
+}
+
+.sync-status-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: #61707b;
+  background: #f3f7f8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sync-status-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-status-saving .sync-status-icon,
+.sync-status-dirty .sync-status-icon {
+  color: #6d5415;
+  background: #fbf1d0;
+}
+
+.sync-status-error .sync-status-icon,
+.sync-status-conflict .sync-status-icon {
+  color: #8e2d2d;
+  background: #fae9e7;
+}
+
+.sync-status-skipped .sync-status-icon {
+  color: #5c6670;
+  background: #eef1f3;
+}
+
+.sync-status-saving + .sync-now-button svg,
+.sync-now-button:disabled svg {
+  animation: sync-spin 900ms linear infinite;
+}
+
+@keyframes sync-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .field-stack {

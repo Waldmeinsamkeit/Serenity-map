@@ -4,7 +4,9 @@ import {
   buildCanvasIndexFromSnapshot,
   exportAiContextFromSnapshot,
   exportObsidianMarkdownFromSnapshot,
+  listPagesFromSnapshot,
   parsePatchTextInput,
+  setCurrentPageInSnapshot,
   validateAiPatchForSnapshot,
 } from '../../scripts/serenity-core.mjs'
 
@@ -197,6 +199,47 @@ describe('Serenity Node snapshot core', () => {
     })
     expect(missingMainPageRef.ok).toBe(false)
     expect(missingMainPageRef.errors.join('\n')).toContain('references missing node: node-a')
+  })
+
+  it('can list pages, read a specific page, set current page, and patch a target page', () => {
+    const pages = listPagesFromSnapshot(multiPageSnapshot())
+    expect(pages.map((page) => [page.id, page.nodeCount, page.edgeCount, page.isCurrent])).toEqual([
+      ['page:page', 2, 1, false],
+      ['page:second', 2, 1, true],
+    ])
+
+    const firstPageContext = exportAiContextFromSnapshot(multiPageSnapshot(), { pageId: 'page:page' })
+    expect(firstPageContext.summary.pageId).toBe('page:page')
+    expect(firstPageContext.summary.currentPageId).toBe('page:page')
+    expect(firstPageContext.selectedNodeIds).toEqual(['node-a'])
+    expect(firstPageContext.nodes.map((node) => node.id).sort()).toEqual(['node-a', 'node-b'])
+
+    const switched = setCurrentPageInSnapshot(multiPageSnapshot(), 'page:page')
+    expect(switched.session.currentPageId).toBe('page:page')
+    expect(exportAiContextFromSnapshot(switched).nodes.map((node) => node.id).sort()).toEqual(['node-a', 'node-b'])
+
+    const validOnFirstPage = validateAiPatchForSnapshot(multiPageSnapshot(), {
+      version: 1,
+      operations: [{ op: 'updateNode', id: 'node-a', title: 'A target page update' }],
+    }, { pageId: 'page:page' })
+    expect(validOnFirstPage.ok).toBe(true)
+
+    const result = applyAiPatchToSnapshot(multiPageSnapshot(), {
+      version: 1,
+      operations: [
+        { op: 'updateNode', id: 'node-a', title: 'A target page update' },
+        { op: 'addNode', id: 'node-first-new', title: 'First page new', connectFromId: 'node-a' },
+      ],
+    }, { pageId: 'page:page' })
+    expect(result.validation.ok).toBe(true)
+    expect(result.snapshot.session.currentPageId).toBe('page:second')
+
+    const updatedFirstPage = exportAiContextFromSnapshot(result.snapshot, { pageId: 'page:page' })
+    expect(updatedFirstPage.nodes.map((node) => node.id).sort()).toEqual(['node-a', 'node-b', 'node-first-new'])
+    expect(updatedFirstPage.nodes.find((node) => node.id === 'node-a')?.title).toBe('A target page update')
+
+    const untouchedSecondPage = exportAiContextFromSnapshot(result.snapshot, { pageId: 'page:second' })
+    expect(untouchedSecondPage.nodes.map((node) => node.id).sort()).toEqual(['node-c', 'node-d'])
   })
 
   it('keeps an empty current page visible to MCP when other pages contain Serenity nodes', () => {

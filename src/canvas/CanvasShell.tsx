@@ -1,15 +1,19 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import {
+  AlertTriangle,
   ArrowRight,
   Bot,
   Braces,
   Check,
+  Database,
   FileJson,
   GitBranch,
   NotebookText,
   Palette,
   Plus,
   Download,
+  RotateCw,
+  Save,
   Tags,
   Trash2,
   Search,
@@ -45,6 +49,25 @@ interface InspectorState {
   status: LearningStatus
 }
 
+type SaveStatus = 'loading' | 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict' | 'skipped'
+
+interface SyncStatusState {
+  status: SaveStatus
+  message: string
+  updatedAt?: string
+  pageId?: string
+  pageName?: string
+  nodeCount: number
+  edgeCount: number
+}
+
+const INITIAL_SYNC_STATUS: SyncStatusState = {
+  status: 'loading',
+  message: '正在连接本地快照',
+  nodeCount: 0,
+  edgeCount: 0,
+}
+
 function toInspectorState(editor: Editor): InspectorState | null {
   const selected = getSelectedLearningCards(editor)
   if (selected.length !== 1) return null
@@ -76,6 +99,17 @@ function markdownFilename() {
   return `serenity-canvas-${timestamp}.md`
 }
 
+function formatSyncTime(value?: string) {
+  if (!value) return '尚未写入'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '时间未知'
+  return date.toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+}
+
 function hasAnyLearningCard(editor: Editor) {
   return editor.getSnapshot().document.store
     ? Object.values(editor.getSnapshot().document.store).some((record) => (
@@ -91,6 +125,7 @@ export function CanvasShell() {
   const saveWarningShownRef = useRef(false)
   const saveInFlightRef = useRef(false)
   const saveAgainRef = useRef(false)
+  const manualSaveRef = useRef<(() => void) | null>(null)
   const importFileInputRef = useRef<HTMLInputElement | null>(null)
   const storeUpdatedAtRef = useRef<string | undefined>(undefined)
   const [inspector, setInspector] = useState<InspectorState | null>(null)
@@ -103,12 +138,32 @@ export function CanvasShell() {
   const [isSearchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [isStylePanelOpen, setStylePanelOpen] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<SyncStatusState>(INITIAL_SYNC_STATUS)
   const [toast, setToast] = useState('')
 
   const refreshInspector = useCallback((nextEditor = editor) => {
     if (!nextEditor) return
     setInspector(toInspectorState(nextEditor))
   }, [editor])
+
+  const updateSyncStatus = useCallback((
+    nextEditor: Editor,
+    status: SaveStatus,
+    message: string,
+    updatedAt = storeUpdatedAtRef.current
+  ) => {
+    const index = buildCanvasIndex(nextEditor)
+    const currentPage = nextEditor.getCurrentPage()
+    setSyncStatus({
+      status,
+      message,
+      updatedAt,
+      pageId: currentPage.id,
+      pageName: currentPage.name,
+      nodeCount: index.nodesById.size,
+      edgeCount: index.edgesById.size,
+    })
+  }, [])
 
   const handleMount = useCallback((mountedEditor: Editor) => {
     setEditor(mountedEditor)
@@ -117,11 +172,14 @@ export function CanvasShell() {
     const saveSnapshot = () => {
       if (saveInFlightRef.current) {
         saveAgainRef.current = true
+        updateSyncStatus(mountedEditor, 'dirty', '有新修改，等待当前保存完成')
         return
       }
 
       const snapshot = mountedEditor.getSnapshot()
-      if (!isSaveableSerenitySnapshot(snapshot)) {
+      const health = inspectSerenitySnapshot(snapshot)
+      if (!health.ok || !isSaveableSerenitySnapshot(snapshot)) {
+        updateSyncStatus(mountedEditor, 'skipped', '跳过空画布，未覆盖 MCP 快照')
         if (!saveWarningShownRef.current) {
           saveWarningShownRef.current = true
           showToast('跳过空画布保存，避免覆盖本地数据')
@@ -129,11 +187,20 @@ export function CanvasShell() {
         return
       }
       saveInFlightRef.current = true
+      updateSyncStatus(mountedEditor, 'saving', '正在写入本地快照')
       void saveLocalCanvasSnapshot(snapshot, storeUpdatedAtRef.current).then((result) => {
         storeUpdatedAtRef.current = result.updatedAt
         saveWarningShownRef.current = false
-      }).catch(() => {
-        showToast('本地画布保存失败')
+        updateSyncStatus(mountedEditor, 'saved', '已保存，MCP 可读取当前页', result.updatedAt)
+      }).catch((error) => {
+        const message = error instanceof Error ? error.message : ''
+        if (message.includes('changed on disk')) {
+          updateSyncStatus(mountedEditor, 'conflict', '本地快照已被外部修改')
+          showToast('本地快照有外部修改，请刷新后再保存')
+        } else {
+          updateSyncStatus(mountedEditor, 'error', '本地画布保存失败')
+          showToast('本地画布保存失败')
+        }
       }).finally(() => {
         saveInFlightRef.current = false
         if (saveAgainRef.current) {
@@ -163,10 +230,13 @@ export function CanvasShell() {
               mountedEditor.loadSnapshot(stored.snapshot)
               syncLearningCardText(mountedEditor)
               refreshInspector(mountedEditor)
+              updateSyncStatus(mountedEditor, 'saved', '已加载本地快照，MCP 可读取', stored.updatedAt)
             } catch {
+              updateSyncStatus(mountedEditor, 'error', '本地快照无法加载')
               showToast('本地画布快照无法加载，已重新初始化')
             }
           } else {
+            updateSyncStatus(mountedEditor, 'skipped', '本地快照为空，已重新初始化')
             showToast('本地画布快照为空，已重新初始化')
           }
         }
@@ -174,6 +244,7 @@ export function CanvasShell() {
           seedDefaultCanvas()
         }
       } catch {
+        updateSyncStatus(mountedEditor, 'error', '本地画布读取失败')
         showToast('本地画布读取失败，已重新初始化')
         if (!hasAnyLearningCard(mountedEditor)) {
           seedDefaultCanvas()
@@ -189,8 +260,10 @@ export function CanvasShell() {
       syncLearningCardText(mountedEditor)
       refreshInspector(mountedEditor)
       if (!canSaveSnapshotRef.current) return
+      updateSyncStatus(mountedEditor, 'dirty', '有未保存更改，等待自动同步')
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
       saveTimerRef.current = window.setTimeout(() => {
+        saveTimerRef.current = null
         saveSnapshot()
       }, 800)
     })
@@ -198,7 +271,8 @@ export function CanvasShell() {
       syncLearningCardText(mountedEditor)
       refreshInspector(mountedEditor)
     }, 0)
-  }, [refreshInspector])
+    manualSaveRef.current = saveSnapshot
+  }, [refreshInspector, updateSyncStatus])
 
   const selectedCards = useMemo(() => (editor ? getSelectedLearningCards(editor) : []), [editor, inspector])
   const searchResults = useMemo(() => {
@@ -224,6 +298,15 @@ export function CanvasShell() {
   function showToast(message: string) {
     setToast(message)
     window.setTimeout(() => setToast(''), 2200)
+  }
+
+  function syncNow() {
+    if (!editor || !manualSaveRef.current) return
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+    manualSaveRef.current()
   }
 
   function addCard() {
@@ -375,6 +458,14 @@ export function CanvasShell() {
     { value: 'question', label: 'Question' },
     { value: 'archived', label: 'Archive' },
   ]
+  const mcpLabel = syncStatus.status === 'saved'
+    ? 'MCP 已同步'
+    : syncStatus.status === 'saving'
+      ? 'MCP 同步中'
+      : 'MCP 待同步'
+  const syncButtonDisabled =
+    !editor || syncStatus.status === 'saving' || syncStatus.status === 'loading'
+  const syncStatusTitle = `${syncStatus.message} · ${syncStatus.pageName ?? '当前页'} · ${syncStatus.nodeCount} 节点 / ${syncStatus.edgeCount} 连线 · ${formatSyncTime(syncStatus.updatedAt)}`
 
   return (
     <div className={isStylePanelOpen ? 'app-shell style-panel-open' : 'app-shell'}>
@@ -475,7 +566,38 @@ export function CanvasShell() {
               <span>{selectedData ? '节点属性' : '学习画布'}</span>
             </div>
           </div>
-          {selectedData && <span className={`status-pill status-${selectedData.status}`}>{selectedData.status}</span>}
+          <div className="inspector-header-actions">
+            <div className={`sync-status-inline sync-status-${syncStatus.status}`} aria-live="polite" title={syncStatusTitle}>
+              <span className="sync-status-icon">
+                {syncStatus.status === 'error' || syncStatus.status === 'conflict' ? (
+                  <AlertTriangle size={14} />
+                ) : (
+                  <Save size={14} />
+                )}
+              </span>
+              <div>
+                <strong>{mcpLabel}</strong>
+                <span>{formatSyncTime(syncStatus.updatedAt)}</span>
+              </div>
+            </div>
+            <button
+              className="sync-now-button"
+              type="button"
+              disabled={syncButtonDisabled}
+              title={syncStatusTitle}
+              onClick={syncNow}
+            >
+              <RotateCw size={14} />
+            </button>
+            {selectedData && <span className={`status-pill status-${selectedData.status}`}>{selectedData.status}</span>}
+          </div>
+        </div>
+
+        <div className="sync-status-meta" aria-label="MCP 同步详情">
+          <Database size={13} />
+          <span>
+            {syncStatus.message} · {syncStatus.pageName ?? '当前页'} · {syncStatus.nodeCount} 节点 / {syncStatus.edgeCount} 连线
+          </span>
         </div>
 
         {inspector && selectedData ? (

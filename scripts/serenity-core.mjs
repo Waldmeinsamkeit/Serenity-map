@@ -96,10 +96,20 @@ function formatCardText(data) {
   return `${data.title}${data.summary ? `\n${data.summary}` : ''}`
 }
 
-function pageIdForSnapshot(snapshot) {
+function pageRecordsForSnapshot(snapshot) {
   const store = getStore(snapshot)
-  const pages = Object.values(store).filter((record) => record?.typeName === 'page' && isString(record.id))
+  return Object.values(store)
+    .filter((record) => record?.typeName === 'page' && isString(record.id))
+    .sort((a, b) => String(a.index ?? '').localeCompare(String(b.index ?? '')))
+}
+
+function pageIdForSnapshot(snapshot, requestedPageId) {
+  const pages = pageRecordsForSnapshot(snapshot)
   const pageIds = new Set(pages.map((page) => page.id))
+  if (isString(requestedPageId)) {
+    if (pageIds.has(requestedPageId)) return requestedPageId
+    throw new Error(`Page not found: ${requestedPageId}.`)
+  }
   if (isString(snapshot?.session?.currentPageId) && pageIds.has(snapshot.session.currentPageId)) return snapshot.session.currentPageId
   const pageStateId = snapshot?.session?.pageStates?.find((pageState) => pageIds.has(pageState?.pageId))?.pageId
   return pageStateId ?? pages[0]?.id ?? 'page:page'
@@ -124,9 +134,8 @@ function getSerenityMeta(shape) {
   return null
 }
 
-function getCurrentPageState(snapshot) {
-  const currentPageId = pageIdForSnapshot(snapshot)
-  return snapshot?.session?.pageStates?.find((pageState) => pageState?.pageId === currentPageId) ?? null
+function getCurrentPageState(snapshot, pageId = pageIdForSnapshot(snapshot)) {
+  return snapshot?.session?.pageStates?.find((pageState) => pageState?.pageId === pageId) ?? null
 }
 
 function isAllowedEmptyPage(snapshot, pageId = pageIdForSnapshot(snapshot)) {
@@ -251,13 +260,52 @@ export async function writeStoredCanvas(payload, canvasFile = defaultCanvasFile)
   return nextPayload
 }
 
-export function buildCanvasIndexFromSnapshot(snapshot) {
+export function listPagesFromSnapshot(snapshot) {
+  const currentPageId = pageIdForSnapshot(snapshot)
+  return pageRecordsForSnapshot(snapshot).map((page) => {
+    const index = buildCanvasIndexFromSnapshot(snapshot, { pageId: page.id })
+    const pageState = getCurrentPageState(snapshot, page.id)
+    return {
+      id: page.id,
+      name: page.name ?? page.id,
+      index: page.index ?? '',
+      isCurrent: page.id === currentPageId,
+      selectedShapeIds: pageState?.selectedShapeIds ?? [],
+      nodeCount: index.nodesById.size,
+      edgeCount: index.edgesById.size,
+      allowEmpty: page.meta?.[SERENITY_META_KEY]?.allowEmpty === true,
+    }
+  })
+}
+
+export function setCurrentPageInSnapshot(snapshot, pageId) {
+  const resolvedPageId = pageIdForSnapshot(snapshot, pageId)
+  const nextSnapshot = structuredClone(snapshot)
+  nextSnapshot.session = {
+    ...(nextSnapshot.session ?? {}),
+    currentPageId: resolvedPageId,
+  }
+  const pageStates = Array.isArray(nextSnapshot.session.pageStates) ? [...nextSnapshot.session.pageStates] : []
+  if (!pageStates.some((pageState) => pageState?.pageId === resolvedPageId)) {
+    pageStates.push({
+      pageId: resolvedPageId,
+      camera: { x: 0, y: 0, z: 1 },
+      selectedShapeIds: [],
+      focusedGroupId: null,
+    })
+  }
+  nextSnapshot.session.pageStates = pageStates
+  return nextSnapshot
+}
+
+export function buildCanvasIndexFromSnapshot(snapshot, options = {}) {
+  const pageId = pageIdForSnapshot(snapshot, options.pageId)
   const nodesById = new Map()
   const edgesById = new Map()
   const shapeIdByNodeId = new Map()
   const shapeIdByEdgeId = new Map()
 
-  for (const shape of getShapeRecords(snapshot)) {
+  for (const shape of getShapeRecords(snapshot, pageId)) {
     const meta = getSerenityMeta(shape)
     if (shape.type !== 'geo' || meta?.kind !== 'learning-card') continue
     const data = meta.data
@@ -275,7 +323,7 @@ export function buildCanvasIndexFromSnapshot(snapshot) {
     shapeIdByNodeId.set(data.id, shape.id)
   }
 
-  for (const shape of getShapeRecords(snapshot)) {
+  for (const shape of getShapeRecords(snapshot, pageId)) {
     const meta = getSerenityMeta(shape)
     if (shape.type !== 'arrow' || meta?.kind !== 'learning-edge') continue
     const data = meta.data
@@ -324,11 +372,12 @@ export function buildMermaidDiagram(nodes, edges) {
   return lines.join('\n')
 }
 
-export function exportAiContextFromSnapshot(snapshot) {
-  const index = buildCanvasIndexFromSnapshot(snapshot)
+export function exportAiContextFromSnapshot(snapshot, options = {}) {
+  const pageId = pageIdForSnapshot(snapshot, options.pageId)
+  const index = buildCanvasIndexFromSnapshot(snapshot, { pageId })
   const nodes = [...index.nodesById.values()]
   const edges = [...index.edgesById.values()]
-  const pageState = getCurrentPageState(snapshot)
+  const pageState = getCurrentPageState(snapshot, pageId)
   const selectedNodeIds = pageState?.selectedShapeIds
     ?.map((shapeId) => nodes.find((node) => node.shapeId === shapeId)?.id)
     .filter(Boolean) ?? []
@@ -339,7 +388,9 @@ export function exportAiContextFromSnapshot(snapshot) {
       nodeCount: nodes.length,
       edgeCount: edges.length,
       selectedNodeIds,
-      currentPageId: pageIdForSnapshot(snapshot),
+      currentPageId: pageId,
+      pageId,
+      pageName: getStore(snapshot)[pageId]?.name ?? pageId,
     },
     selectedNodeIds,
     nodes,
@@ -349,8 +400,8 @@ export function exportAiContextFromSnapshot(snapshot) {
   }
 }
 
-export function exportReadableContextFromSnapshot(snapshot) {
-  const context = exportAiContextFromSnapshot(snapshot)
+export function exportReadableContextFromSnapshot(snapshot, options = {}) {
+  const context = exportAiContextFromSnapshot(snapshot, options)
   const selected = context.selectedNodeIds.length ? context.selectedNodeIds.join(', ') : 'none'
   const nodeLines = context.nodes.map((node) => {
     const tags = node.tags?.length ? ` [${node.tags.join(', ')}]` : ''
@@ -383,8 +434,8 @@ export function exportReadableContextFromSnapshot(snapshot) {
   ].join('\n')
 }
 
-export function exportObsidianMarkdownFromSnapshot(snapshot) {
-  const context = exportAiContextFromSnapshot(snapshot)
+export function exportObsidianMarkdownFromSnapshot(snapshot, options = {}) {
+  const context = exportAiContextFromSnapshot(snapshot, options)
   const selected = context.selectedNodeIds.length ? context.selectedNodeIds.join(', ') : 'none'
   const nodeById = new Map(context.nodes.map((node) => [node.id, node]))
   const obsidianTags = uniqueValues([
@@ -574,13 +625,13 @@ function parseObsidianEdges(markdown, index) {
   return operations
 }
 
-export function parseObsidianMarkdownPatchInput(text, snapshot) {
+export function parseObsidianMarkdownPatchInput(text, snapshot, options = {}) {
   const markdown = String(text ?? '').trim()
   const looksLikeObsidianExport =
     markdown.startsWith('---') && markdown.includes('type: canvas-context') && markdown.includes('## Nodes')
   if (!looksLikeObsidianExport) return { patch: null, errors: ['Input is not a Serenity Obsidian Markdown export.'] }
 
-  const index = buildCanvasIndexFromSnapshot(snapshot)
+  const index = buildCanvasIndexFromSnapshot(snapshot, options)
   const operations = [
     ...parseObsidianNodes(markdown, index),
     ...parseObsidianEdges(markdown, index),
@@ -596,11 +647,11 @@ export function parseObsidianMarkdownPatchInput(text, snapshot) {
   }
 }
 
-export function parsePatchTextInput(input, snapshot) {
+export function parsePatchTextInput(input, snapshot, options = {}) {
   if (typeof input !== 'string') return { ...parseAiPatchInput(input), format: 'json' }
   const trimmed = input.trim()
   if (trimmed.startsWith('{')) return { ...parseAiPatchInput(trimmed), format: 'json' }
-  return { ...parseObsidianMarkdownPatchInput(trimmed, snapshot), format: 'obsidian' }
+  return { ...parseObsidianMarkdownPatchInput(trimmed, snapshot, options), format: 'obsidian' }
 }
 
 function validateOperationShape(op, index, errors) {
@@ -662,15 +713,20 @@ export function parseAiPatchInput(input) {
   return { patch: input, errors: [] }
 }
 
-export function validateAiPatchForSnapshot(snapshot, patch) {
+export function validateAiPatchForSnapshot(snapshot, patch, options = {}) {
   const errors = []
   const warnings = []
   if (!isRecord(patch)) return { ok: false, errors: ['Patch must be a JSON object.'], warnings, summary: [] }
   if (patch.version !== 1) errors.push('Patch version must be 1.')
   if (!Array.isArray(patch.operations)) errors.push('Patch must include an operations array.')
+  let index
+  try {
+    index = buildCanvasIndexFromSnapshot(snapshot, options)
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : 'Target page was not found.')
+  }
   if (errors.length) return { ok: false, errors, warnings, summary: [] }
 
-  const index = buildCanvasIndexFromSnapshot(snapshot)
   const ids = new Set(index.nodesById.keys())
   const edgeIds = new Set(index.edgesById.keys())
 
@@ -719,15 +775,15 @@ function makeEdgeId() {
   return `edge-${randomUUID()}`
 }
 
-function nextShapeIndex(snapshot) {
-  const indexes = getShapeRecords(snapshot)
+function nextShapeIndex(snapshot, pageId = pageIdForSnapshot(snapshot)) {
+  const indexes = getShapeRecords(snapshot, pageId)
     .map((shape) => shape.index)
     .filter((index) => typeof index === 'string' && index.length > 0)
     .sort()
   return getIndexAbove(indexes.at(-1) ?? ZERO_INDEX_KEY)
 }
 
-function createLearningCardRecord(snapshot, input) {
+function createLearningCardRecord(snapshot, input, pageId = pageIdForSnapshot(snapshot)) {
   const timestamp = nowIso()
   const data = {
     id: input.id ?? makeNodeId(),
@@ -744,8 +800,8 @@ function createLearningCardRecord(snapshot, input) {
     id,
     typeName: 'shape',
     type: 'geo',
-    parentId: pageIdForSnapshot(snapshot),
-    index: nextShapeIndex(snapshot),
+    parentId: pageId,
+    index: nextShapeIndex(snapshot, pageId),
     x: input.x ?? 0,
     y: input.y ?? 0,
     rotation: 0,
@@ -772,7 +828,7 @@ function createLearningCardRecord(snapshot, input) {
   }
 }
 
-function createLearningEdgeRecords(snapshot, fromShape, toShape, input) {
+function createLearningEdgeRecords(snapshot, fromShape, toShape, input, pageId = pageIdForSnapshot(snapshot)) {
   const timestamp = nowIso()
   const data = {
     id: input.id ?? makeEdgeId(),
@@ -791,8 +847,8 @@ function createLearningEdgeRecords(snapshot, fromShape, toShape, input) {
     id: arrowId,
     typeName: 'shape',
     type: 'arrow',
-    parentId: pageIdForSnapshot(snapshot),
-    index: nextShapeIndex(snapshot),
+    parentId: pageId,
+    index: nextShapeIndex(snapshot, pageId),
     x: origin.x,
     y: origin.y,
     rotation: 0,
@@ -859,12 +915,12 @@ function edgeDataFromShape(shape) {
   return shape.meta?.[SERENITY_META_KEY]?.data
 }
 
-function shapeByNodeId(snapshot, nodeId) {
-  return getShapeRecords(snapshot).find((shape) => shape.type === 'geo' && nodeDataFromShape(shape)?.id === nodeId)
+function shapeByNodeId(snapshot, nodeId, pageId = pageIdForSnapshot(snapshot)) {
+  return getShapeRecords(snapshot, pageId).find((shape) => shape.type === 'geo' && nodeDataFromShape(shape)?.id === nodeId)
 }
 
-function edgeShapeByPatch(snapshot, op) {
-  return getShapeRecords(snapshot).find((shape) => {
+function edgeShapeByPatch(snapshot, op, pageId = pageIdForSnapshot(snapshot)) {
+  return getShapeRecords(snapshot, pageId).find((shape) => {
     if (shape.type !== 'arrow') return false
     const data = edgeDataFromShape(shape)
     if (!data) return false
@@ -873,30 +929,31 @@ function edgeShapeByPatch(snapshot, op) {
   })
 }
 
-function branchPosition(snapshot, sourceNodeId) {
-  const source = sourceNodeId ? shapeByNodeId(snapshot, sourceNodeId) : null
+function branchPosition(snapshot, sourceNodeId, pageId = pageIdForSnapshot(snapshot)) {
+  const source = sourceNodeId ? shapeByNodeId(snapshot, sourceNodeId, pageId) : null
   if (!source) return { x: 120, y: 120 }
-  const siblingCount = getShapeRecords(snapshot).filter((shape) => shape.type === 'geo' && Math.abs((shape.x ?? 0) - ((source.x ?? 0) + CARD_WIDTH + 120)) < 24).length
+  const siblingCount = getShapeRecords(snapshot, pageId).filter((shape) => shape.type === 'geo' && Math.abs((shape.x ?? 0) - ((source.x ?? 0) + CARD_WIDTH + 120)) < 24).length
   return { x: (source.x ?? 0) + CARD_WIDTH + 120, y: (source.y ?? 0) + siblingCount * (CARD_HEIGHT + 48) }
 }
 
-export function applyAiPatchToSnapshot(snapshot, patch) {
-  const validation = validateAiPatchForSnapshot(snapshot, patch)
+export function applyAiPatchToSnapshot(snapshot, patch, options = {}) {
+  const validation = validateAiPatchForSnapshot(snapshot, patch, options)
   if (!validation.ok) return { snapshot, validation }
   const nextSnapshot = structuredClone(snapshot)
   const store = getStore(nextSnapshot)
+  const pageId = pageIdForSnapshot(nextSnapshot, options.pageId)
 
   for (const operation of patch.operations) {
     if (operation.op === 'addNode') {
-      const fallback = branchPosition(nextSnapshot, operation.connectFromId)
+      const fallback = branchPosition(nextSnapshot, operation.connectFromId, pageId)
       const card = createLearningCardRecord(nextSnapshot, {
         ...operation,
         x: operation.x ?? fallback.x,
         y: operation.y ?? fallback.y,
-      })
+      }, pageId)
       store[card.id] = card
       if (operation.connectFromId) {
-        const fromShape = shapeByNodeId(nextSnapshot, operation.connectFromId)
+        const fromShape = shapeByNodeId(nextSnapshot, operation.connectFromId, pageId)
         const toShape = card
         if (fromShape) {
           const { arrow, startBinding, endBinding } = createLearningEdgeRecords(nextSnapshot, fromShape, toShape, {
@@ -904,7 +961,7 @@ export function applyAiPatchToSnapshot(snapshot, patch) {
             toId: card.meta[SERENITY_META_KEY].data.id,
             kind: operation.edgeKind,
             label: operation.edgeLabel,
-          })
+          }, pageId)
           store[arrow.id] = arrow
           store[startBinding.id] = startBinding
           store[endBinding.id] = endBinding
@@ -913,7 +970,7 @@ export function applyAiPatchToSnapshot(snapshot, patch) {
     }
 
     if (operation.op === 'updateNode') {
-      const shape = shapeByNodeId(nextSnapshot, operation.id)
+      const shape = shapeByNodeId(nextSnapshot, operation.id, pageId)
       if (!shape) continue
       const current = nodeDataFromShape(shape)
       const data = {
@@ -934,10 +991,10 @@ export function applyAiPatchToSnapshot(snapshot, patch) {
     }
 
     if (operation.op === 'deleteNode') {
-      const shape = shapeByNodeId(nextSnapshot, operation.id)
+      const shape = shapeByNodeId(nextSnapshot, operation.id, pageId)
       if (!shape) continue
       delete store[shape.id]
-      for (const edge of getShapeRecords(nextSnapshot)) {
+      for (const edge of getShapeRecords(nextSnapshot, pageId)) {
         const data = edgeDataFromShape(edge)
         if (data?.fromId === operation.id || data?.toId === operation.id) {
           delete store[edge.id]
@@ -949,8 +1006,8 @@ export function applyAiPatchToSnapshot(snapshot, patch) {
     }
 
     if (operation.op === 'connectNodes') {
-      const fromShape = shapeByNodeId(nextSnapshot, operation.fromId)
-      const toShape = shapeByNodeId(nextSnapshot, operation.toId)
+      const fromShape = shapeByNodeId(nextSnapshot, operation.fromId, pageId)
+      const toShape = shapeByNodeId(nextSnapshot, operation.toId, pageId)
       if (!fromShape || !toShape) continue
       const { arrow, startBinding, endBinding } = createLearningEdgeRecords(nextSnapshot, fromShape, toShape, {
         id: operation.id,
@@ -958,14 +1015,14 @@ export function applyAiPatchToSnapshot(snapshot, patch) {
         toId: operation.toId,
         kind: operation.kind,
         label: operation.label,
-      })
+      }, pageId)
       store[arrow.id] = arrow
       store[startBinding.id] = startBinding
       store[endBinding.id] = endBinding
     }
 
     if (operation.op === 'disconnectNodes') {
-      const edge = edgeShapeByPatch(nextSnapshot, operation)
+      const edge = edgeShapeByPatch(nextSnapshot, operation, pageId)
       if (!edge) continue
       delete store[edge.id]
       for (const binding of getBindingRecords(nextSnapshot)) {
@@ -974,7 +1031,7 @@ export function applyAiPatchToSnapshot(snapshot, patch) {
     }
 
     if (operation.op === 'moveNode') {
-      const shape = shapeByNodeId(nextSnapshot, operation.id)
+      const shape = shapeByNodeId(nextSnapshot, operation.id, pageId)
       if (shape) {
         shape.x = operation.x
         shape.y = operation.y
