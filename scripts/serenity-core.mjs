@@ -298,6 +298,63 @@ export function setCurrentPageInSnapshot(snapshot, pageId) {
   return nextSnapshot
 }
 
+function bindingTouchesShape(binding, shapeIds) {
+  return shapeIds.has(binding?.fromId) || shapeIds.has(binding?.toId)
+}
+
+export function restorePageFromSnapshotBackup(currentSnapshot, backupSnapshot, pageId) {
+  const resolvedPageId = pageIdForSnapshot(backupSnapshot, pageId)
+  const backupStore = getStore(backupSnapshot)
+  const backupPage = backupStore[resolvedPageId]
+  if (!backupPage || backupPage.typeName !== 'page') throw new Error(`Backup page not found: ${resolvedPageId}.`)
+
+  const nextSnapshot = structuredClone(currentSnapshot)
+  const nextStore = getStore(nextSnapshot)
+  const currentPageShapeIds = new Set(
+    Object.values(nextStore)
+      .filter((record) => record?.typeName === 'shape' && record.parentId === resolvedPageId)
+      .map((record) => record.id)
+  )
+  const backupPageShapeIds = new Set(
+    Object.values(backupStore)
+      .filter((record) => record?.typeName === 'shape' && record.parentId === resolvedPageId)
+      .map((record) => record.id)
+  )
+
+  for (const record of Object.values(nextStore)) {
+    if (record?.typeName === 'shape' && record.parentId === resolvedPageId) delete nextStore[record.id]
+    if (record?.typeName === 'binding' && bindingTouchesShape(record, currentPageShapeIds)) delete nextStore[record.id]
+  }
+
+  nextStore[resolvedPageId] = structuredClone(backupPage)
+  for (const record of Object.values(backupStore)) {
+    if (record?.typeName === 'shape' && record.parentId === resolvedPageId) nextStore[record.id] = structuredClone(record)
+    if (record?.typeName === 'binding' && bindingTouchesShape(record, backupPageShapeIds)) {
+      nextStore[record.id] = structuredClone(record)
+    }
+  }
+
+  nextSnapshot.session = {
+    ...(nextSnapshot.session ?? {}),
+    currentPageId: resolvedPageId,
+  }
+  const backupPageState = getCurrentPageState(backupSnapshot, resolvedPageId)
+  const pageStates = Array.isArray(nextSnapshot.session.pageStates) ? [...nextSnapshot.session.pageStates] : []
+  const nextPageState = backupPageState
+    ? structuredClone(backupPageState)
+    : {
+        pageId: resolvedPageId,
+        camera: { x: 0, y: 0, z: 1 },
+        selectedShapeIds: [],
+        focusedGroupId: null,
+      }
+  const existingIndex = pageStates.findIndex((pageState) => pageState?.pageId === resolvedPageId)
+  if (existingIndex >= 0) pageStates[existingIndex] = nextPageState
+  else pageStates.push(nextPageState)
+  nextSnapshot.session.pageStates = pageStates
+  return nextSnapshot
+}
+
 export function buildCanvasIndexFromSnapshot(snapshot, options = {}) {
   const pageId = pageIdForSnapshot(snapshot, options.pageId)
   const nodesById = new Map()

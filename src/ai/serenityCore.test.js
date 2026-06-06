@@ -6,6 +6,7 @@ import {
   exportObsidianMarkdownFromSnapshot,
   listPagesFromSnapshot,
   parsePatchTextInput,
+  restorePageFromSnapshotBackup,
   setCurrentPageInSnapshot,
   validateAiPatchForSnapshot,
 } from '../../scripts/serenity-core.mjs'
@@ -253,6 +254,30 @@ describe('Serenity Node snapshot core', () => {
     expect(context.summary.nodeCount).toBe(0)
     expect(context.summary.edgeCount).toBe(0)
     expect(context.selectedNodeIds).toEqual([])
+  })
+
+  it('restores one page from a backup snapshot without rolling back other pages', () => {
+    const backup = multiPageSnapshot()
+    const current = applyAiPatchToSnapshot(multiPageSnapshot(), {
+      version: 1,
+      operations: [{ op: 'updateNode', id: 'node-a', title: 'A changed after backup' }],
+    }, { pageId: 'page:page' }).snapshot
+
+    delete current.document.store['shape:c']
+    delete current.document.store['shape:d']
+    delete current.document.store['shape:e2']
+    current.document.store['page:second'].meta = {
+      serenity: { kind: 'serenity-page', allowEmpty: true, clearedAt: '2026-01-01T00:00:00.000Z' },
+    }
+
+    const restored = restorePageFromSnapshotBackup(current, backup, 'page:second')
+    const firstPage = exportAiContextFromSnapshot(restored, { pageId: 'page:page' })
+    const secondPage = exportAiContextFromSnapshot(restored, { pageId: 'page:second' })
+
+    expect(firstPage.nodes.find((node) => node.id === 'node-a')?.title).toBe('A changed after backup')
+    expect(secondPage.nodes.map((node) => node.id).sort()).toEqual(['node-c', 'node-d'])
+    expect(secondPage.summary.currentPageId).toBe('page:second')
+    expect(restored.session.currentPageId).toBe('page:second')
   })
 
   it('exports and imports Obsidian Markdown through the Node core protocol', () => {

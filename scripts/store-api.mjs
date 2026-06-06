@@ -1,10 +1,12 @@
 import { createServer } from 'node:http'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { restorePageFromSnapshotBackup } from './serenity-core.mjs'
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)))
 const storeDir = join(rootDir, 'store')
+const historyDir = join(storeDir, 'history')
 const canvasFile = join(storeDir, 'canvas-default.json')
 const port = Number(process.env.SERENITY_STORE_PORT ?? 8787)
 const maxBodyBytes = 10 * 1024 * 1024
@@ -12,8 +14,8 @@ const serenityMetaKey = 'serenity'
 
 function sendJson(response, statusCode, body) {
   response.writeHead(statusCode, {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET,PUT,OPTIONS',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,PUT,POST,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Content-Type': 'application/json; charset=utf-8',
   })
@@ -84,6 +86,103 @@ async function saveCanvas(payload) {
   await writeFile(tempFile, `${JSON.stringify(nextPayload, null, 2)}\n`, 'utf8')
   await rename(tempFile, canvasFile)
   return nextPayload
+}
+
+function safeHistoryPart(value) {
+  return String(value ?? 'page')
+    .trim()
+    .replaceAll(/[^a-zA-Z0-9_.:-]+/g, '-')
+    .replaceAll(/^-+|-+$/g, '') || 'page'
+}
+
+function historyTimestamp() {
+  return new Date().toISOString().replaceAll(/[:.]/g, '-')
+}
+
+function historyBackupId(pageId) {
+  return `canvas-default-${safeHistoryPart(pageId)}-${historyTimestamp()}.json`
+}
+
+async function createHistoryBackup(payload) {
+  if (!payload || typeof payload !== 'object' || !payload.snapshot) {
+    throw new Error('Payload must contain a snapshot object.')
+  }
+  if (typeof payload.pageId !== 'string' || !payload.pageId.trim()) {
+    throw new Error('Payload must contain pageId.')
+  }
+
+  const validation = validateSerenitySnapshot(payload.snapshot)
+  if (!validation.ok) {
+    const error = new Error(validation.error)
+    error.statusCode = 400
+    throw error
+  }
+
+  await mkdir(historyDir, { recursive: true })
+  const backupId = historyBackupId(payload.pageId)
+  const backup = {
+    version: 1,
+    createdAt: new Date().toISOString(),
+    reason: typeof payload.reason === 'string' ? payload.reason : 'manual-backup',
+    pageId: payload.pageId,
+    snapshot: payload.snapshot,
+  }
+  await writeFile(join(historyDir, backupId), `${JSON.stringify(backup, null, 2)}\n`, 'utf8')
+  return {
+    ok: true,
+    backupId,
+    pageId: payload.pageId,
+    createdAt: backup.createdAt,
+    reason: backup.reason,
+  }
+}
+
+async function listHistoryBackups(pageId) {
+  const safePageId = safeHistoryPart(pageId)
+  try {
+    const names = await readdir(historyDir)
+    return names
+      .filter((name) => name.startsWith(`canvas-default-${safePageId}-`) && name.endsWith('.json'))
+      .sort()
+      .reverse()
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return []
+    throw error
+  }
+}
+
+async function readHistoryBackup(pageId, backupId) {
+  let targetId = backupId
+  if (targetId && (targetId.includes('/') || targetId.includes('\\') || !targetId.endsWith('.json'))) {
+    throw new Error('Invalid backupId.')
+  }
+  if (!targetId) {
+    const backups = await listHistoryBackups(pageId)
+    targetId = backups[0]
+  }
+  if (!targetId) {
+    const error = new Error('No backup found for this page.')
+    error.statusCode = 404
+    throw error
+  }
+  const backup = JSON.parse(await readFile(join(historyDir, targetId), 'utf8'))
+  return { ...backup, backupId: targetId }
+}
+
+async function restorePageFromHistory(payload) {
+  if (!payload || typeof payload !== 'object' || typeof payload.pageId !== 'string') {
+    throw new Error('Payload must contain pageId.')
+  }
+  const current = JSON.parse(await readFile(canvasFile, 'utf8'))
+  const backup = await readHistoryBackup(payload.pageId, payload.backupId)
+  const snapshot = restorePageFromSnapshotBackup(current.snapshot, backup.snapshot, payload.pageId)
+  const saved = await saveCanvas({ snapshot })
+  return {
+    ok: true,
+    ...saved,
+    pageId: payload.pageId,
+    restoredFrom: backup.backupId,
+  }
 }
 
 function isRecord(value) {
@@ -167,6 +266,28 @@ const server = createServer(async (request, response) => {
         return
       }
       sendJson(response, 200, { ok: true, updatedAt: saved.updatedAt })
+      return
+    }
+
+    if (url.pathname === '/api/canvas/default/history' && request.method === 'GET') {
+      const pageId = url.searchParams.get('pageId')
+      if (!pageId) {
+        sendJson(response, 400, { ok: false, error: 'Missing pageId.' })
+        return
+      }
+      sendJson(response, 200, { ok: true, pageId, backups: await listHistoryBackups(pageId) })
+      return
+    }
+
+    if (url.pathname === '/api/canvas/default/history' && request.method === 'POST') {
+      const payload = await readJsonBody(request)
+      sendJson(response, 200, await createHistoryBackup(payload))
+      return
+    }
+
+    if (url.pathname === '/api/canvas/default/restore-page' && request.method === 'POST') {
+      const payload = await readJsonBody(request)
+      sendJson(response, 200, await restorePageFromHistory(payload))
       return
     }
 

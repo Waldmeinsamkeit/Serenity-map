@@ -8,6 +8,7 @@ import {
   Database,
   FileJson,
   GitBranch,
+  History,
   NotebookText,
   Palette,
   Plus,
@@ -36,7 +37,12 @@ import {
 import { createRoboticsIndustryMap } from '../model/roboticsSeed'
 import { createAiSemiconductorIndustryMap } from '../model/aiSemiconductorSeed'
 import { SERENITY_META_KEY, type AiPatch, type LearningStatus, type PatchValidationResult } from '../model/types'
-import { loadLocalCanvasSnapshot, saveLocalCanvasSnapshot } from './localCanvasStore'
+import {
+  createLocalCanvasBackup,
+  loadLocalCanvasSnapshot,
+  restoreLocalCanvasPageFromBackup,
+  saveLocalCanvasSnapshot,
+} from './localCanvasStore'
 import { inspectSerenitySnapshot, isSaveableSerenitySnapshot } from './snapshotGuards'
 
 const STORAGE_KEY = 'serenity:last-ai-context'
@@ -340,7 +346,7 @@ export function CanvasShell() {
     showToast('已创建学习关系')
   }
 
-  function clearCurrentPage() {
+  async function clearCurrentPage() {
     if (!editor) return
     const currentPage = editor.getCurrentPage()
     const shapeIds = editor.getCurrentPageShapes().map((shape) => shape.id)
@@ -355,6 +361,14 @@ export function CanvasShell() {
       existingSerenityMeta && typeof existingSerenityMeta === 'object' && !Array.isArray(existingSerenityMeta)
         ? existingSerenityMeta
         : {}
+
+    try {
+      await createLocalCanvasBackup(editor.getSnapshot(), currentPage.id, 'clear-current-page')
+    } catch {
+      updateSyncStatus(editor, 'error', '清空前备份失败，未清空当前页')
+      showToast('清空前备份失败，未清空当前页')
+      return
+    }
 
     editor.markHistoryStoppingPoint('clear-current-page')
     editor.run(() => {
@@ -374,7 +388,30 @@ export function CanvasShell() {
       editor.selectNone()
     })
     refreshInspector(editor)
-    showToast('当前页面已清空，可撤销恢复')
+    showToast('当前页面已清空，可撤销或从历史恢复')
+  }
+
+  async function restorePreviousPage() {
+    if (!editor) return
+    const currentPage = editor.getCurrentPage()
+    try {
+      updateSyncStatus(editor, 'saving', '正在恢复上一版页面')
+      canSaveSnapshotRef.current = false
+      const restored = await restoreLocalCanvasPageFromBackup(currentPage.id)
+      storeUpdatedAtRef.current = restored.updatedAt
+      editor.loadSnapshot(restored.snapshot as any)
+      syncLearningCardText(editor)
+      refreshInspector(editor)
+      updateSyncStatus(editor, 'saved', '已恢复上一版页面，MCP 可读取', restored.updatedAt)
+      showToast('已恢复上一版页面')
+      window.setTimeout(() => {
+        canSaveSnapshotRef.current = true
+      }, 0)
+    } catch {
+      canSaveSnapshotRef.current = true
+      updateSyncStatus(editor, 'error', '没有可恢复的历史页面')
+      showToast('没有可恢复的历史页面')
+    }
   }
 
   function exportContext() {
@@ -480,8 +517,11 @@ export function CanvasShell() {
         <button title="连接两个选中卡片" onClick={connectSelection}>
           <ArrowRight size={18} />
         </button>
-        <button title="清空当前页面" onClick={clearCurrentPage}>
+        <button title="清空当前页面" onClick={() => void clearCurrentPage()}>
           <Trash2 size={18} />
+        </button>
+        <button title="恢复上一版页面" onClick={() => void restorePreviousPage()}>
+          <History size={18} />
         </button>
         <button title="从选中节点发散" onClick={addCard}>
           <GitBranch size={18} />
