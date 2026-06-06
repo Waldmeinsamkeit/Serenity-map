@@ -360,4 +360,27 @@ describe('Serenity Node snapshot core', () => {
     ])
     expect(validateAiPatchForSnapshot(snapshot(), parsed.patch).ok).toBe(true)
   })
+
+  it('parses a generic Obsidian note through the Node core protocol', () => {
+    const markdown = [
+      '---',
+      'title: "Physical AI Note"',
+      'tags: [physical-ai, robotics]',
+      '---',
+      '',
+      '# Physical AI Note',
+      'Embodied deployment depends on [[Simulation]] and [[Actuators]].',
+    ].join('\n')
+    const parsed = parsePatchTextInput(markdown, snapshot(), { importMode: 'merge' })
+
+    expect(parsed.format).toBe('obsidian')
+    expect(parsed.errors).toEqual([])
+    expect(parsed.patch.operations).toEqual([
+      expect.objectContaining({ op: 'addNode', id: 'node-obsidian-physical-ai-note', title: 'Physical AI Note' }),
+      expect.objectContaining({ op: 'addNode', id: 'node-obsidian-simulation', title: 'Simulation' }),
+      expect.objectContaining({ op: 'connectNodes', fromId: 'node-obsidian-physical-ai-note', toId: 'node-obsidian-simulation' }),
+      expect.objectContaining({ op: 'addNode', id: 'node-obsidian-actuators', title: 'Actuators' }),
+      expect.objectContaining({ op: 'connectNodes', fromId: 'node-obsidian-physical-ai-note', toId: 'node-obsidian-actuators' }),
+    ])
+  })
 })

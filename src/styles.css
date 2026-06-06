@@ -132,6 +132,7 @@ button {
 }
 
 .search-box button:focus-visible,
+.search-scope-tabs button:focus-visible,
 .search-results button:focus-visible,
 .import-source-panel button:focus-visible,
 .markdown-modal-footer button:focus-visible {
@@ -172,6 +173,40 @@ button {
   color: #68737c;
   font-size: 12px;
   font-weight: 700;
+}
+
+.search-scope-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #d8e0e5;
+  border-radius: 7px;
+  background: #f6f8f9;
+}
+
+.search-scope-tabs button {
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 5px;
+  color: #5e6972;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.search-scope-tabs button:hover {
+  color: #234e47;
+  background: #edf4f2;
+}
+
+.search-scope-tabs button.is-selected {
+  color: #194f46;
+  background: #ffffff;
+  box-shadow: 0 1px 5px rgba(38, 49, 58, 0.12);
 }
 
 .search-box {
@@ -243,6 +278,12 @@ button {
   transform: translateY(-1px);
 }
 
+.search-results button.is-active {
+  border-color: #2f6f65;
+  background: #eef8f5;
+  box-shadow: inset 3px 0 0 #2f6f65;
+}
+
 .search-results strong {
   overflow: hidden;
   font-size: 13px;
@@ -261,10 +302,32 @@ button {
   -webkit-line-clamp: 2;
 }
 
+.search-result-type {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: #315b54;
+  background: #e9f4f1;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
 .search-results code {
   color: #2f6f65;
   font-family: "Cascadia Code", Consolas, monospace;
   font-size: 10px;
+}
+
+.search-results mark {
+  border-radius: 3px;
+  color: inherit;
+  background: #fff2a8;
+  box-shadow: 0 0 0 1px rgba(170, 129, 0, 0.16);
 }
 
 .search-results p {
@@ -792,6 +855,30 @@ button {
   transform: translateY(-1px);
 }
 
+.import-mode-group {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 7px;
+  background: #edf3f5;
+}
+
+.import-source-panel .import-mode-group button {
+  min-height: 30px;
+  padding: 0 6px;
+  color: #52616c;
+  background: transparent;
+  font-size: 11px;
+  transform: none;
+}
+
+.import-source-panel .import-mode-group button:hover,
+.import-source-panel .import-mode-group button.is-selected {
+  color: #245b52;
+  background: #ffffff;
+}
+
 .markdown-textarea {
   min-height: 100%;
   scrollbar-color: #c3d0d6 transparent;
@@ -807,6 +894,19 @@ button {
 .markdown-preview-panel strong {
   color: #29333d;
   font-size: 12px;
+}
+
+.patch-preview-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.patch-preview-heading span {
+  color: #68737c;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .markdown-modal-footer {

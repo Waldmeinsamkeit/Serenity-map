@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import { type Editor, type TLShapeId, Tldraw } from 'tldraw'
 import { exportObsidianMarkdown } from '../ai/context'
-import { applyAiPatch, parsePatchText, summarizePatch, validatePatchForEditor } from '../ai/patch'
+import { applyAiPatch, parsePatchText, summarizePatch, validatePatchForEditor, type ObsidianImportMode } from '../ai/patch'
 import {
   buildCanvasIndex,
   connectLearningCards,
@@ -56,6 +56,7 @@ interface InspectorState {
 }
 
 type SaveStatus = 'loading' | 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict' | 'skipped'
+type SearchScope = 'all' | 'nodes' | 'edges' | 'tags' | 'status'
 
 interface SyncStatusState {
   status: SaveStatus
@@ -72,6 +73,30 @@ const INITIAL_SYNC_STATUS: SyncStatusState = {
   message: '正在连接本地快照',
   nodeCount: 0,
   edgeCount: 0,
+}
+
+const SEARCH_SCOPES: Array<{ value: SearchScope; label: string }> = [
+  { value: 'all', label: '全部' },
+  { value: 'nodes', label: '节点' },
+  { value: 'edges', label: '连线' },
+  { value: 'tags', label: '标签' },
+  { value: 'status', label: '状态' },
+]
+
+function highlightText(value: string, query: string) {
+  const trimmed = query.trim()
+  if (!trimmed) return value
+  const lowerValue = value.toLowerCase()
+  const lowerQuery = trimmed.toLowerCase()
+  const index = lowerValue.indexOf(lowerQuery)
+  if (index < 0) return value
+  return (
+    <>
+      {value.slice(0, index)}
+      <mark>{value.slice(index, index + trimmed.length)}</mark>
+      {value.slice(index + trimmed.length)}
+    </>
+  )
 }
 
 function toInspectorState(editor: Editor): InspectorState | null {
@@ -139,10 +164,13 @@ export function CanvasShell() {
   const [patchText, setPatchText] = useState('')
   const [patch, setPatch] = useState<AiPatch | null>(null)
   const [patchValidation, setPatchValidation] = useState<PatchValidationResult | null>(null)
+  const [importMode, setImportMode] = useState<ObsidianImportMode>('merge')
   const [isPatchOpen, setPatchOpen] = useState(false)
   const [isContextOpen, setContextOpen] = useState(false)
   const [isSearchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchScope, setSearchScope] = useState<SearchScope>('all')
+  const [activeSearchIndex, setActiveSearchIndex] = useState(0)
   const [isStylePanelOpen, setStylePanelOpen] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncStatusState>(INITIAL_SYNC_STATUS)
   const [toast, setToast] = useState('')
@@ -284,22 +312,74 @@ export function CanvasShell() {
   const searchResults = useMemo(() => {
     if (!editor) return []
     const query = searchQuery.trim().toLowerCase()
-    const nodes = [...buildCanvasIndex(editor).nodesById.values()]
-    if (!query) return nodes.slice(0, 8)
-    return nodes
-      .filter((node) => {
-        const haystack = [
-          node.id,
-          node.title,
-          node.summary,
-          node.body,
-          node.status,
-          ...node.tags,
-        ].join(' ').toLowerCase()
-        return haystack.includes(query)
+    const index = buildCanvasIndex(editor)
+    const nodes = [...index.nodesById.values()]
+    const nodeResults = nodes.map((node) => ({
+      key: `node:${node.id}`,
+      type: '节点',
+      shapeId: node.shapeId,
+      title: node.title,
+      detail: node.summary || node.body || node.id,
+      meta: node.tags.length ? node.tags.join(', ') : node.status,
+      haystack: [node.id, node.title, node.summary, node.body, node.status, ...node.tags].join(' ').toLowerCase(),
+    }))
+    const edgeResults = [...index.edgesById.values()].map((edge) => {
+      const from = index.nodesById.get(edge.fromId)
+      const to = index.nodesById.get(edge.toId)
+      const title = `${from?.title ?? edge.fromId} → ${to?.title ?? edge.toId}`
+      return {
+        key: `edge:${edge.id}`,
+        type: '连线',
+        shapeId: edge.shapeId,
+        title,
+        detail: edge.label || edge.kind,
+        meta: edge.kind,
+        haystack: [edge.id, title, edge.fromId, edge.toId, edge.kind, edge.label].join(' ').toLowerCase(),
+      }
+    })
+    const tagResults = [...new Set(nodes.flatMap((node) => node.tags))]
+      .filter(Boolean)
+      .map((tag) => {
+        const first = nodes.find((node) => node.tags.includes(tag))
+        const count = nodes.filter((node) => node.tags.includes(tag)).length
+        return {
+          key: `tag:${tag}`,
+          type: '标签',
+          shapeId: first?.shapeId ?? nodes[0]?.shapeId,
+          title: tag,
+          detail: `${count} 个节点使用此标签`,
+          meta: 'tag',
+          haystack: tag.toLowerCase(),
+        }
       })
+    const statusResults = [...new Set(nodes.map((node) => node.status))]
+      .map((status) => {
+        const first = nodes.find((node) => node.status === status)
+        const count = nodes.filter((node) => node.status === status).length
+        return {
+          key: `status:${status}`,
+          type: '状态',
+          shapeId: first?.shapeId ?? nodes[0]?.shapeId,
+          title: status,
+          detail: `${count} 个节点处于此状态`,
+          meta: 'status',
+          haystack: status.toLowerCase(),
+        }
+      })
+    const scopedResults = [
+      ...(searchScope === 'all' || searchScope === 'nodes' ? nodeResults : []),
+      ...(searchScope === 'all' || searchScope === 'edges' ? edgeResults : []),
+      ...(searchScope === 'all' || searchScope === 'tags' ? tagResults : []),
+      ...(searchScope === 'all' || searchScope === 'status' ? statusResults : []),
+    ]
+    return scopedResults
+      .filter((result) => !query || result.haystack.includes(query))
       .slice(0, 12)
-  }, [editor, inspector, searchQuery])
+  }, [editor, inspector, searchQuery, searchScope])
+
+  useEffect(() => {
+    setActiveSearchIndex(0)
+  }, [searchQuery, searchScope, isSearchOpen])
 
   function showToast(message: string) {
     setToast(message)
@@ -424,9 +504,9 @@ export function CanvasShell() {
     setContextOpen(true)
   }
 
-  function parsePatchFromInput(nextText = patchText) {
+  function parsePatchFromInput(nextText = patchText, nextImportMode = importMode) {
     if (!editor) return
-    const parsed = parsePatchText(nextText, buildCanvasIndex(editor))
+    const parsed = parsePatchText(nextText, buildCanvasIndex(editor), { importMode: nextImportMode })
     if (!parsed.patch) {
       setPatch(null)
       setPatchValidation({ ok: false, errors: parsed.errors, warnings: [] })
@@ -454,6 +534,26 @@ export function CanvasShell() {
     }
     refreshInspector(editor)
     setSearchOpen(false)
+  }
+
+  function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setActiveSearchIndex((index) => Math.min(index + 1, Math.max(searchResults.length - 1, 0)))
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setActiveSearchIndex((index) => Math.max(index - 1, 0))
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      const result = searchResults[activeSearchIndex]
+      if (result?.shapeId) focusSearchResult(result.shapeId)
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setSearchOpen(false)
+    }
   }
 
   function applyPatch() {
@@ -503,6 +603,20 @@ export function CanvasShell() {
   const syncButtonDisabled =
     !editor || syncStatus.status === 'saving' || syncStatus.status === 'loading'
   const syncStatusTitle = `${syncStatus.message} · ${syncStatus.pageName ?? '当前页'} · ${syncStatus.nodeCount} 节点 / ${syncStatus.edgeCount} 连线 · ${formatSyncTime(syncStatus.updatedAt)}`
+  const importModeOptions: Array<{ value: ObsidianImportMode; label: string }> = [
+    { value: 'merge', label: '合并' },
+    { value: 'overwrite', label: '覆盖' },
+    { value: 'add-only', label: '只新增' },
+  ]
+  const importPreview = patch
+    ? {
+        add: patch.operations.filter((operation) => operation.op === 'addNode').length,
+        update: patch.operations.filter((operation) => operation.op === 'updateNode').length,
+        connect: patch.operations.filter((operation) => operation.op === 'connectNodes').length,
+        other: patch.operations.filter((operation) => !['addNode', 'updateNode', 'connectNodes'].includes(operation.op)).length,
+        lines: summarizePatch(patch).slice(0, 10),
+      }
+    : null
 
   return (
     <div className={isStylePanelOpen ? 'app-shell style-panel-open' : 'app-shell'}>
@@ -543,6 +657,7 @@ export function CanvasShell() {
           aria-label="搜索节点"
           aria-expanded={isSearchOpen}
           aria-controls="node-search-popover"
+          data-testid="canvas-search-toggle"
           onClick={() => {
             setSearchOpen((value) => !value)
             setStylePanelOpen(false)
@@ -551,26 +666,42 @@ export function CanvasShell() {
           <Search size={18} />
         </button>
         <button title="导入 Obsidian Markdown" onClick={() => setPatchOpen(true)}>
-          <Download size={18} />
+          <Upload size={18} />
         </button>
         <button title="导出 Obsidian Markdown" onClick={exportContext}>
-          <Upload size={18} />
+          <Download size={18} />
         </button>
       </aside>
 
       {isSearchOpen && (
-        <div className="search-popover" id="node-search-popover">
+        <div className="search-popover" id="node-search-popover" data-testid="canvas-search-popover">
           <div className="search-popover-header">
-            <strong>搜索节点</strong>
+            <strong>搜索画布</strong>
             <span>{searchResults.length} 个结果</span>
+          </div>
+          <div className="search-scope-tabs" role="group" aria-label="搜索范围">
+            {SEARCH_SCOPES.map((scope) => (
+              <button
+                key={scope.value}
+                className={searchScope === scope.value ? 'is-selected' : ''}
+                type="button"
+                aria-pressed={searchScope === scope.value}
+                data-testid={`search-scope-${scope.value}`}
+                onClick={() => setSearchScope(scope.value)}
+              >
+                {scope.label}
+              </button>
+            ))}
           </div>
           <div className="search-box">
             <Search size={15} />
             <input
               autoFocus
               aria-label="搜索节点"
+              data-testid="canvas-search-input"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={handleSearchKeyDown}
               placeholder="标题、正文、标签或 ID"
             />
             {searchQuery && (
@@ -581,15 +712,27 @@ export function CanvasShell() {
           </div>
           <div className="search-results">
             {searchResults.length ? (
-              searchResults.map((node) => (
-                <button key={node.id} type="button" onClick={() => focusSearchResult(node.shapeId)}>
-                  <strong>{node.title}</strong>
-                  <span>{node.summary || node.body || node.id}</span>
-                  <code>{node.tags.length ? node.tags.join(', ') : node.status}</code>
+              searchResults.map((result, index) => (
+                <button
+                  key={result.key}
+                  className={index === activeSearchIndex ? 'is-active' : ''}
+                  type="button"
+                  aria-selected={index === activeSearchIndex}
+                  data-testid="canvas-search-result"
+                  data-result-type={result.type}
+                  onMouseEnter={() => setActiveSearchIndex(index)}
+                  onClick={() => {
+                    if (result.shapeId) focusSearchResult(result.shapeId)
+                  }}
+                >
+                  <span className="search-result-type">{result.type}</span>
+                  <strong>{highlightText(result.title, searchQuery)}</strong>
+                  <span>{highlightText(result.detail, searchQuery)}</span>
+                  <code>{highlightText(result.meta, searchQuery)}</code>
                 </button>
               ))
             ) : (
-              <p role="status">没有匹配的节点</p>
+              <p role="status">没有匹配的内容</p>
             )}
           </div>
         </div>
@@ -802,10 +945,25 @@ export function CanvasShell() {
                   <strong>粘贴 Markdown 或选择 .md 文件</strong>
                 </div>
                 <button type="button" onClick={() => importFileInputRef.current?.click()}>
-                  <Download size={15} />
+                  <Upload size={15} />
                   选择 Markdown
                 </button>
-                <p>会转换为节点更新、新增节点和关系连接，再交给 Serenity 校验。</p>
+                <p>支持 Serenity 导出文件，也支持普通 Obsidian 笔记、frontmatter、#tags 和 [[wikilink]]。</p>
+                <div className="import-mode-group" role="group" aria-label="导入模式">
+                  {importModeOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={importMode === option.value ? 'is-selected' : ''}
+                      onClick={() => {
+                        setImportMode(option.value)
+                        parsePatchFromInput(patchText, option.value)
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </aside>
               <textarea
                 className="patch-input markdown-textarea"
@@ -814,12 +972,20 @@ export function CanvasShell() {
                   setPatchText(event.target.value)
                   parsePatchFromInput(event.target.value)
                 }}
-                placeholder={'---\ntitle: "Serenity Canvas Export"\ntype: canvas-context\n---\n\n## Nodes\n### 新的概念 (node-new-concept)'}
+                placeholder={'---\ntitle: "机器人产业链笔记"\ntags: [robotics, industry]\n---\n# 机器人产业链笔记\n执行器和控制器是关键环节，相关主题见 [[减速器]] 和 [[运动控制]]。'}
               />
             </div>
             <div className="patch-preview markdown-preview-panel">
-              <strong>操作预览</strong>
-              {patch ? summarizePatch(patch).map((line) => <p key={line}>{line}</p>) : <p>暂无可预览操作。</p>}
+              <div className="patch-preview-heading">
+                <strong>差异预览</strong>
+                {importPreview && (
+                  <span>
+                    新增 {importPreview.add} · 更新 {importPreview.update} · 连线 {importPreview.connect}
+                    {importPreview.other ? ` · 其他 ${importPreview.other}` : ''}
+                  </span>
+                )}
+              </div>
+              {importPreview ? importPreview.lines.map((line) => <p key={line}>{line}</p>) : <p>暂无可预览操作。</p>}
             </div>
             {patchValidation && (
               <div className={patchValidation.ok ? 'validation-ok' : 'validation-error'}>

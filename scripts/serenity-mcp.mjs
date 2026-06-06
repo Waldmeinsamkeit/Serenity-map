@@ -54,6 +54,13 @@ function pageOptions(pageId) {
   return pageId ? { pageId } : {}
 }
 
+function parseOptions(pageId, importMode) {
+  return {
+    ...pageOptions(pageId),
+    ...(importMode ? { importMode } : {}),
+  }
+}
+
 function exportContextByFormat(snapshot, format, pageId) {
   const options = pageOptions(pageId)
   if (format === 'obsidian') return exportObsidianMarkdownFromSnapshot(snapshot, options)
@@ -195,11 +202,12 @@ server.registerTool(
     inputSchema: {
       patch: z.union([z.string(), z.record(z.any())]),
       pageId: z.string().optional(),
+      importMode: z.enum(['overwrite', 'merge', 'add-only']).optional(),
     },
   },
-  async ({ patch, pageId }) => {
+  async ({ patch, pageId, importMode }) => {
     const stored = await loadCanvas()
-    const options = pageOptions(pageId)
+    const options = parseOptions(pageId, importMode)
     const parsed = parsePatchTextInput(patch, stored.snapshot, options)
     if (!parsed.patch) return toolText({ ok: false, errors: parsed.errors, warnings: [], summary: [] })
     const validation = validateAiPatchForSnapshot(stored.snapshot, parsed.patch, options)
@@ -215,11 +223,12 @@ server.registerTool(
     inputSchema: {
       patch: z.union([z.string(), z.record(z.any())]),
       pageId: z.string().optional(),
+      importMode: z.enum(['overwrite', 'merge', 'add-only']).optional(),
     },
   },
-  async ({ patch, pageId }) => {
+  async ({ patch, pageId, importMode }) => {
     const stored = await loadCanvas()
-    const options = pageOptions(pageId)
+    const options = parseOptions(pageId, importMode)
     const parsed = parsePatchTextInput(patch, stored.snapshot, options)
     if (!parsed.patch) return toolText({ ok: false, errors: parsed.errors, warnings: [], summary: [] })
     const result = applyAiPatchToSnapshot(stored.snapshot, parsed.patch, options)
@@ -248,11 +257,12 @@ server.registerTool(
     inputSchema: {
       pageId: z.string(),
       patch: z.union([z.string(), z.record(z.any())]),
+      importMode: z.enum(['overwrite', 'merge', 'add-only']).optional(),
     },
   },
-  async ({ pageId, patch }) => {
+  async ({ pageId, patch, importMode }) => {
     const stored = await loadCanvas()
-    const options = { pageId }
+    const options = parseOptions(pageId, importMode)
     const parsed = parsePatchTextInput(patch, stored.snapshot, options)
     if (!parsed.patch) return toolText({ ok: false, errors: parsed.errors, warnings: [], summary: [], pageId })
     const result = applyAiPatchToSnapshot(stored.snapshot, parsed.patch, options)
@@ -281,11 +291,12 @@ server.registerTool(
     inputSchema: {
       markdown: z.string(),
       pageId: z.string().optional(),
+      importMode: z.enum(['overwrite', 'merge', 'add-only']).optional(),
     },
   },
-  async ({ markdown, pageId }) => {
+  async ({ markdown, pageId, importMode }) => {
     const stored = await loadCanvas()
-    const options = pageOptions(pageId)
+    const options = parseOptions(pageId, importMode)
     const parsed = parsePatchTextInput(markdown, stored.snapshot, options)
     if (!parsed.patch) return toolText({ ok: false, errors: parsed.errors, warnings: [], summary: [], format: parsed.format })
     const validation = validateAiPatchForSnapshot(stored.snapshot, parsed.patch, options)
@@ -307,11 +318,12 @@ server.registerTool(
     inputSchema: {
       markdown: z.string(),
       pageId: z.string().optional(),
+      importMode: z.enum(['overwrite', 'merge', 'add-only']).optional(),
     },
   },
-  async ({ markdown, pageId }) => {
+  async ({ markdown, pageId, importMode }) => {
     const stored = await loadCanvas()
-    const options = pageOptions(pageId)
+    const options = parseOptions(pageId, importMode)
     const parsed = parsePatchTextInput(markdown, stored.snapshot, options)
     if (!parsed.patch) return toolText({ ok: false, errors: parsed.errors, warnings: [], summary: [], format: parsed.format })
     const result = applyAiPatchToSnapshot(stored.snapshot, parsed.patch, options)

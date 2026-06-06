@@ -161,6 +161,75 @@ describe('AI patch contract', () => {
       },
     ])
   })
+
+  it('converts a generic Obsidian note with frontmatter and wikilinks', () => {
+    const markdown = [
+      '---',
+      'title: "机器人产业链笔记"',
+      'tags: [robotics, industry]',
+      '---',
+      '',
+      '# 机器人产业链笔记',
+      '执行器和控制器是关键环节，相关主题见 [[减速器]] 和 [[运动控制|控制层]]。',
+      '',
+      '#physical-ai',
+    ].join('\n')
+    const result = parsePatchText(markdown, index([]), { importMode: 'merge' })
+
+    expect(result.format).toBe('obsidian')
+    expect(result.errors).toEqual([])
+    expect(result.patch?.operations).toEqual([
+      expect.objectContaining({
+        op: 'addNode',
+        id: 'node-obsidian-机器人产业链笔记',
+        title: '机器人产业链笔记',
+        tags: ['robotics', 'industry', 'physical-ai', 'obsidian'],
+      }),
+      expect.objectContaining({
+        op: 'addNode',
+        id: 'node-obsidian-减速器',
+        title: '减速器',
+      }),
+      expect.objectContaining({
+        op: 'connectNodes',
+        fromId: 'node-obsidian-机器人产业链笔记',
+        toId: 'node-obsidian-减速器',
+        label: 'wikilink',
+      }),
+      expect.objectContaining({
+        op: 'addNode',
+        id: 'node-obsidian-运动控制',
+        title: '运动控制',
+      }),
+      expect.objectContaining({
+        op: 'connectNodes',
+        fromId: 'node-obsidian-机器人产业链笔记',
+        toId: 'node-obsidian-运动控制',
+        label: 'wikilink',
+      }),
+    ])
+  })
+
+  it('respects add-only mode for existing Obsidian note nodes', () => {
+    const markdown = [
+      '---',
+      'title: "Existing"',
+      '---',
+      'Existing body with [[New Link]].',
+    ].join('\n')
+    const result = parsePatchText(markdown, index([node('node-obsidian-existing')]), { importMode: 'add-only' })
+
+    expect(result.errors).toEqual([])
+    expect(result.patch?.operations.some((operation) => operation.op === 'updateNode')).toBe(false)
+    expect(result.patch?.operations).toEqual([
+      expect.objectContaining({ op: 'addNode', id: 'node-obsidian-new-link' }),
+      expect.objectContaining({
+        op: 'connectNodes',
+        fromId: 'node-obsidian-existing',
+        toId: 'node-obsidian-new-link',
+      }),
+    ])
+  })
 })
 
 describe('AI context diagram', () => {

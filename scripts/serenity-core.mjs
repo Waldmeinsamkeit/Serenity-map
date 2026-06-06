@@ -19,6 +19,7 @@ export const VALID_EDGE_KINDS = [
   'blocks',
   'related',
 ]
+const VALID_IMPORT_MODES = ['overwrite', 'merge', 'add-only']
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)))
 export const projectRoot = rootDir
@@ -71,6 +72,43 @@ function normalizeObsidianTag(value) {
 
 function uniqueValues(values) {
   return [...new Set(values.map((value) => String(value).trim()).filter(Boolean))]
+}
+
+function hashText(value) {
+  let hash = 0
+  for (const char of String(value)) hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0
+  return Math.abs(hash).toString(36)
+}
+
+function nodeIdFromTitle(title) {
+  const slug = String(title)
+    .trim()
+    .toLowerCase()
+    .replaceAll(/[^\p{L}\p{N}]+/gu, '-')
+    .replaceAll(/^-+|-+$/g, '')
+  return `node-obsidian-${slug || hashText(title)}`
+}
+
+function findNodeByTitleOrId(index, title, id = nodeIdFromTitle(title)) {
+  if (!index) return null
+  return index.nodesById.get(id) ?? [...index.nodesById.values()].find((node) => node.title === title) ?? null
+}
+
+function mergeNodeOperation(existing, next, mode = 'merge') {
+  if (!existing) return { op: 'addNode', ...next }
+  if (mode === 'add-only') return null
+  if (mode === 'overwrite') return { op: 'updateNode', ...next, id: existing.id }
+  return {
+    op: 'updateNode',
+    id: existing.id,
+    title: next.title || existing.title,
+    summary: next.summary || existing.summary,
+    body: existing.body && next.body && !existing.body.includes(next.body)
+      ? `${existing.body}\n\n${next.body}`
+      : next.body || existing.body,
+    tags: normalizeTags([...(existing.tags ?? []), ...(next.tags ?? [])]),
+    status: existing.status,
+  }
 }
 
 function nodeAnchor(node) {
@@ -630,7 +668,7 @@ function parseNodeHeading(heading, fallbackId) {
   }
 }
 
-function parseObsidianNodes(markdown, index) {
+function parseObsidianNodes(markdown, index, mode = 'merge') {
   const operations = []
   const sections = [...markdown.matchAll(/^###\s+(.+)$/gm)]
   for (const [sectionIndex, match] of sections.entries()) {
@@ -645,21 +683,19 @@ function parseObsidianNodes(markdown, index) {
     const summary = readMarkdownField(section, 'Summary')
     const body = readMarkdownBody(section)
 
-    if (index?.nodesById.has(id)) {
-      operations.push({ op: 'updateNode', id, title, summary: summary === 'none' ? '' : summary, body, tags, status })
-    } else {
-      operations.push({
-        op: 'addNode',
-        id,
-        title,
-        summary: summary === 'none' ? '' : summary,
-        body,
-        tags,
-        status,
-        x: 120 + (sectionIndex % 4) * 360,
-        y: 120 + Math.floor(sectionIndex / 4) * 220,
-      })
+    const operation = mergeNodeOperation(index?.nodesById.get(id) ?? null, {
+      id,
+      title,
+      summary: summary === 'none' ? '' : summary,
+      body,
+      tags,
+      status,
+    }, mode)
+    if (operation?.op === 'addNode') {
+      operation.x = 120 + (sectionIndex % 4) * 360
+      operation.y = 120 + Math.floor(sectionIndex / 4) * 220
     }
+    if (operation) operations.push(operation)
   }
   return operations
 }
@@ -682,22 +718,94 @@ function parseObsidianEdges(markdown, index) {
   return operations
 }
 
+function parseFrontmatter(markdown) {
+  if (!markdown.startsWith('---')) return { data: {}, body: markdown }
+  const end = markdown.indexOf('\n---', 3)
+  if (end < 0) return { data: {}, body: markdown }
+  const data = {}
+  for (const line of markdown.slice(3, end).trim().split(/\r?\n/)) {
+    const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/)
+    if (match) data[match[1]] = match[2].replace(/^["']|["']$/g, '').trim()
+  }
+  return { data, body: markdown.slice(end + 4).trim() }
+}
+
+function parseFrontmatterTags(value) {
+  if (!value) return []
+  return String(value)
+    .replace(/^\[|\]$/g, '')
+    .split(',')
+    .map((tag) => tag.replace(/^["'#\s]+|["'\s]+$/g, ''))
+    .filter(Boolean)
+}
+
+function parseGenericObsidianNote(markdown, index, mode = 'merge') {
+  const { data, body } = parseFrontmatter(markdown)
+  const title = data.title || body.match(/^#\s+(.+)$/m)?.[1]?.trim() || 'Imported Obsidian Note'
+  const id = data.id || nodeIdFromTitle(title)
+  const tags = normalizeTags([
+    ...parseFrontmatterTags(data.tags),
+    ...readMarkdownTags(body),
+    'obsidian',
+  ])
+  const summary = body
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line && !line.startsWith('#') && !line.startsWith('!') && !line.startsWith('[['))
+    ?.slice(0, 180) ?? ''
+  const existing = findNodeByTitleOrId(index, title, id)
+  const mainId = existing?.id ?? id
+  const operations = []
+  const mainOperation = mergeNodeOperation(existing, { id, title, summary, body, tags, status: 'exploring' }, mode)
+  if (mainOperation) operations.push(mainOperation)
+  const knownIds = new Set(index ? [...index.nodesById.keys()] : [])
+  for (const operation of operations) if (operation.op === 'addNode' && operation.id) knownIds.add(operation.id)
+  const existingPairs = new Set(index ? [...index.edgesById.values()].map((edge) => `${edge.fromId}->${edge.toId}`) : [])
+  const links = uniqueValues([...body.matchAll(/\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g)].map((match) => match[1]))
+  links.forEach((linkTitle, indexOffset) => {
+    const linkedExisting = findNodeByTitleOrId(index, linkTitle)
+    const linkedId = linkedExisting?.id ?? nodeIdFromTitle(linkTitle)
+    if (!linkedExisting && !knownIds.has(linkedId)) {
+      operations.push({
+        op: 'addNode',
+        id: linkedId,
+        title: linkTitle,
+        summary: 'Imported wikilink reference',
+        body: '',
+        tags: ['obsidian-link'],
+        status: 'exploring',
+        x: 480 + (indexOffset % 3) * 320,
+        y: 120 + Math.floor(indexOffset / 3) * 200,
+      })
+      knownIds.add(linkedId)
+    }
+    if (mainId !== linkedId && !existingPairs.has(`${mainId}->${linkedId}`)) {
+      operations.push({ op: 'connectNodes', fromId: mainId, toId: linkedId, kind: 'related', label: 'wikilink' })
+      existingPairs.add(`${mainId}->${linkedId}`)
+    }
+  })
+  return operations
+}
+
 export function parseObsidianMarkdownPatchInput(text, snapshot, options = {}) {
   const markdown = String(text ?? '').trim()
   const looksLikeObsidianExport =
     markdown.startsWith('---') && markdown.includes('type: canvas-context') && markdown.includes('## Nodes')
-  if (!looksLikeObsidianExport) return { patch: null, errors: ['Input is not a Serenity Obsidian Markdown export.'] }
-
   const index = buildCanvasIndexFromSnapshot(snapshot, options)
-  const operations = [
-    ...parseObsidianNodes(markdown, index),
-    ...parseObsidianEdges(markdown, index),
-  ]
+  const importMode = VALID_IMPORT_MODES.includes(options.importMode)
+    ? options.importMode
+    : looksLikeObsidianExport ? 'overwrite' : 'merge'
+  const operations = looksLikeObsidianExport
+    ? [
+        ...parseObsidianNodes(markdown, index, importMode),
+        ...parseObsidianEdges(markdown, index),
+      ]
+    : parseGenericObsidianNote(markdown, index, importMode)
   if (!operations.length) return { patch: null, errors: ['No nodes or edges were found in the Obsidian Markdown.'] }
   return {
     patch: {
       version: 1,
-      intent: 'Import Serenity Obsidian Markdown',
+      intent: looksLikeObsidianExport ? 'Import Serenity Obsidian Markdown' : 'Import generic Obsidian Markdown note',
       operations,
     },
     errors: [],
