@@ -43,6 +43,7 @@ import {
   restoreLocalCanvasPageFromBackup,
   saveLocalCanvasSnapshot,
 } from './localCanvasStore'
+import { SEARCH_SCOPES, buildCanvasSearchResults, type SearchScope } from './search'
 import { inspectSerenitySnapshot, isSaveableSerenitySnapshot } from './snapshotGuards'
 
 const STORAGE_KEY = 'serenity:last-ai-context'
@@ -56,7 +57,6 @@ interface InspectorState {
 }
 
 type SaveStatus = 'loading' | 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict' | 'skipped'
-type SearchScope = 'all' | 'nodes' | 'edges' | 'tags' | 'status'
 
 interface SyncStatusState {
   status: SaveStatus
@@ -74,14 +74,6 @@ const INITIAL_SYNC_STATUS: SyncStatusState = {
   nodeCount: 0,
   edgeCount: 0,
 }
-
-const SEARCH_SCOPES: Array<{ value: SearchScope; label: string }> = [
-  { value: 'all', label: '全部' },
-  { value: 'nodes', label: '节点' },
-  { value: 'edges', label: '连线' },
-  { value: 'tags', label: '标签' },
-  { value: 'status', label: '状态' },
-]
 
 function highlightText(value: string, query: string) {
   const trimmed = query.trim()
@@ -158,6 +150,8 @@ export function CanvasShell() {
   const saveAgainRef = useRef(false)
   const manualSaveRef = useRef<(() => void) | null>(null)
   const importFileInputRef = useRef<HTMLInputElement | null>(null)
+  const searchButtonRef = useRef<HTMLButtonElement | null>(null)
+  const searchPopoverRef = useRef<HTMLDivElement | null>(null)
   const storeUpdatedAtRef = useRef<string | undefined>(undefined)
   const [inspector, setInspector] = useState<InspectorState | null>(null)
   const [contextText, setContextText] = useState('')
@@ -311,75 +305,27 @@ export function CanvasShell() {
   const selectedCards = useMemo(() => (editor ? getSelectedLearningCards(editor) : []), [editor, inspector])
   const searchResults = useMemo(() => {
     if (!editor) return []
-    const query = searchQuery.trim().toLowerCase()
-    const index = buildCanvasIndex(editor)
-    const nodes = [...index.nodesById.values()]
-    const nodeResults = nodes.map((node) => ({
-      key: `node:${node.id}`,
-      type: '节点',
-      shapeId: node.shapeId,
-      title: node.title,
-      detail: node.summary || node.body || node.id,
-      meta: node.tags.length ? node.tags.join(', ') : node.status,
-      haystack: [node.id, node.title, node.summary, node.body, node.status, ...node.tags].join(' ').toLowerCase(),
-    }))
-    const edgeResults = [...index.edgesById.values()].map((edge) => {
-      const from = index.nodesById.get(edge.fromId)
-      const to = index.nodesById.get(edge.toId)
-      const title = `${from?.title ?? edge.fromId} → ${to?.title ?? edge.toId}`
-      return {
-        key: `edge:${edge.id}`,
-        type: '连线',
-        shapeId: edge.shapeId,
-        title,
-        detail: edge.label || edge.kind,
-        meta: edge.kind,
-        haystack: [edge.id, title, edge.fromId, edge.toId, edge.kind, edge.label].join(' ').toLowerCase(),
-      }
-    })
-    const tagResults = [...new Set(nodes.flatMap((node) => node.tags))]
-      .filter(Boolean)
-      .map((tag) => {
-        const first = nodes.find((node) => node.tags.includes(tag))
-        const count = nodes.filter((node) => node.tags.includes(tag)).length
-        return {
-          key: `tag:${tag}`,
-          type: '标签',
-          shapeId: first?.shapeId ?? nodes[0]?.shapeId,
-          title: tag,
-          detail: `${count} 个节点使用此标签`,
-          meta: 'tag',
-          haystack: tag.toLowerCase(),
-        }
-      })
-    const statusResults = [...new Set(nodes.map((node) => node.status))]
-      .map((status) => {
-        const first = nodes.find((node) => node.status === status)
-        const count = nodes.filter((node) => node.status === status).length
-        return {
-          key: `status:${status}`,
-          type: '状态',
-          shapeId: first?.shapeId ?? nodes[0]?.shapeId,
-          title: status,
-          detail: `${count} 个节点处于此状态`,
-          meta: 'status',
-          haystack: status.toLowerCase(),
-        }
-      })
-    const scopedResults = [
-      ...(searchScope === 'all' || searchScope === 'nodes' ? nodeResults : []),
-      ...(searchScope === 'all' || searchScope === 'edges' ? edgeResults : []),
-      ...(searchScope === 'all' || searchScope === 'tags' ? tagResults : []),
-      ...(searchScope === 'all' || searchScope === 'status' ? statusResults : []),
-    ]
-    return scopedResults
-      .filter((result) => !query || result.haystack.includes(query))
-      .slice(0, 12)
+    return buildCanvasSearchResults(buildCanvasIndex(editor), searchQuery, searchScope)
   }, [editor, inspector, searchQuery, searchScope])
 
   useEffect(() => {
     setActiveSearchIndex(0)
   }, [searchQuery, searchScope, isSearchOpen])
+
+  useEffect(() => {
+    if (!isSearchOpen) return
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (searchPopoverRef.current?.contains(target)) return
+      if (searchButtonRef.current?.contains(target)) return
+      setSearchOpen(false)
+    }
+
+    window.addEventListener('pointerdown', handlePointerDown, true)
+    return () => window.removeEventListener('pointerdown', handlePointerDown, true)
+  }, [isSearchOpen])
 
   function showToast(message: string) {
     setToast(message)
@@ -651,6 +597,7 @@ export function CanvasShell() {
           <Palette size={18} />
         </button>
         <button
+          ref={searchButtonRef}
           className={isSearchOpen ? 'is-active' : ''}
           type="button"
           title="搜索节点"
@@ -674,7 +621,7 @@ export function CanvasShell() {
       </aside>
 
       {isSearchOpen && (
-        <div className="search-popover" id="node-search-popover" data-testid="canvas-search-popover">
+        <div ref={searchPopoverRef} className="search-popover" id="node-search-popover" data-testid="canvas-search-popover">
           <div className="search-popover-header">
             <strong>搜索画布</strong>
             <span>{searchResults.length} 个结果</span>
@@ -725,9 +672,11 @@ export function CanvasShell() {
                     if (result.shapeId) focusSearchResult(result.shapeId)
                   }}
                 >
-                  <span className="search-result-type">{result.type}</span>
-                  <strong>{highlightText(result.title, searchQuery)}</strong>
-                  <span>{highlightText(result.detail, searchQuery)}</span>
+                  <div className="search-result-title">
+                    <span className="search-result-type">{result.type}</span>
+                    <strong>{highlightText(result.title, searchQuery)}</strong>
+                  </div>
+                  <span className="search-result-detail">{highlightText(result.detail, searchQuery)}</span>
                   <code>{highlightText(result.meta, searchQuery)}</code>
                 </button>
               ))

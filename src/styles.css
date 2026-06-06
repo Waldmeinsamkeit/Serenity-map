@@ -146,7 +146,7 @@ button {
   left: 72px;
   display: grid;
   gap: 10px;
-  width: min(340px, calc(100vw - 108px));
+  width: min(380px, calc(100vw - 108px));
   min-width: 280px;
   padding: 10px;
   border: 1px solid rgba(192, 203, 211, 0.86);
@@ -255,14 +255,16 @@ button {
   display: grid;
   gap: 6px;
   max-height: 312px;
+  padding-right: 3px;
   overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .search-results button {
   display: grid;
-  gap: 4px;
-  min-height: 58px;
-  padding: 10px;
+  gap: 6px;
+  min-height: 78px;
+  padding: 9px 10px;
   border: 1px solid #d8e0e5;
   border-radius: 6px;
   color: #20242a;
@@ -284,6 +286,14 @@ button {
   box-shadow: inset 3px 0 0 #2f6f65;
 }
 
+.search-result-title {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
 .search-results strong {
   overflow: hidden;
   font-size: 13px;
@@ -292,7 +302,7 @@ button {
   white-space: nowrap;
 }
 
-.search-results span {
+.search-result-detail {
   display: -webkit-box;
   overflow: hidden;
   color: #68737c;
@@ -307,6 +317,7 @@ button {
   width: fit-content;
   max-width: 100%;
   align-items: center;
+  flex: 0 0 auto;
   padding: 2px 6px;
   border-radius: 999px;
   color: #315b54;
@@ -318,9 +329,14 @@ button {
 }
 
 .search-results code {
+  display: block;
+  overflow: hidden;
   color: #2f6f65;
   font-family: "Cascadia Code", Consolas, monospace;
   font-size: 10px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .search-results mark {
