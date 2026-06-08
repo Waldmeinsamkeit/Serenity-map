@@ -160,6 +160,39 @@ describe('Serenity Node snapshot core', () => {
     expect(result.errors.join('\n')).toContain('missing toId')
   })
 
+  it('rejects addNode when connectFromId points to the node being added', () => {
+    const result = validateAiPatchForSnapshot(snapshot(), {
+      version: 1,
+      operations: [{ op: 'addNode', id: 'node-c', title: 'C', connectFromId: 'node-c' }],
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toContain('connectFromId cannot reference the node being added')
+  })
+
+  it('rejects disconnectNodes when the requested edge pair does not exist', () => {
+    const result = validateAiPatchForSnapshot(snapshot(), {
+      version: 1,
+      operations: [{ op: 'disconnectNodes', fromId: 'node-a', toId: 'missing' }],
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toContain('references missing edge: node-a -> missing')
+  })
+
+  it('tracks edges added and removed within the same patch', () => {
+    const result = validateAiPatchForSnapshot(snapshot(), {
+      version: 1,
+      operations: [
+        { op: 'addNode', id: 'node-c', title: 'C' },
+        { op: 'connectNodes', id: 'edge-ac', fromId: 'node-a', toId: 'node-c' },
+        { op: 'disconnectNodes', fromId: 'node-a', toId: 'node-c' },
+      ],
+    })
+
+    expect(result.ok).toBe(true)
+  })
+
   it('applies add, update, connect, move, and delete operations to a cloned snapshot', () => {
     const result = applyAiPatchToSnapshot(snapshot(), {
       version: 1,

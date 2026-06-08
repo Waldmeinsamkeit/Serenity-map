@@ -86,6 +86,42 @@ describe('AI patch contract', () => {
     expect(result.ok).toBe(true)
   })
 
+  it('rejects addNode when connectFromId points to the node being added', () => {
+    const result = validateAiPatch(
+      { version: 1, operations: [{ op: 'addNode', id: 'b', title: 'B', connectFromId: 'b' }] },
+      index([node('a')])
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toContain('connectFromId cannot reference the node being added')
+  })
+
+  it('rejects disconnectNodes when the requested edge pair does not exist', () => {
+    const result = validateAiPatch(
+      { version: 1, operations: [{ op: 'disconnectNodes', fromId: 'a', toId: 'c' }] },
+      index([node('a'), node('b'), node('c')], [edge('edge-ab', 'a', 'b')])
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toContain('references missing edge: a -> c')
+  })
+
+  it('tracks edges added and removed within the same patch', () => {
+    const result = validateAiPatch(
+      {
+        version: 1,
+        operations: [
+          { op: 'addNode', id: 'b', title: 'B' },
+          { op: 'connectNodes', id: 'edge-ab', fromId: 'a', toId: 'b' },
+          { op: 'disconnectNodes', fromId: 'a', toId: 'b' },
+        ],
+      },
+      index([node('a')])
+    )
+
+    expect(result.ok).toBe(true)
+  })
+
   it('converts Serenity Obsidian Markdown into patch operations', () => {
     const markdown = [
       '---',

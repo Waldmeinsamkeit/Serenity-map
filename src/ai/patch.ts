@@ -376,6 +376,8 @@ export function validateAiPatch(patch: AiPatch, index: CanvasIndex): PatchValida
   const warnings: string[] = []
   const ids = new Set(index.nodesById.keys())
   const edgeIds = new Set(index.edgesById.keys())
+  const edgesById = new Map(index.edgesById)
+  const edgePairs = new Set([...index.edgesById.values()].map((edge) => `${edge.fromId}->${edge.toId}`))
 
   if (patch.version !== 1) errors.push('Patch version must be 1.')
   if (!Array.isArray(patch.operations)) errors.push('Patch operations must be an array.')
@@ -388,15 +390,27 @@ export function validateAiPatch(patch: AiPatch, index: CanvasIndex): PatchValida
     if (op.op === 'addNode') {
       const id = op.id
       if (id && ids.has(id)) errors.push(`Operation ${i + 1} addNode id already exists: ${id}.`)
-      if (id) ids.add(id)
+      if (id && op.connectFromId === id) {
+        errors.push(`Operation ${i + 1} addNode connectFromId cannot reference the node being added: ${id}.`)
+      }
       if (op.connectFromId && !ids.has(op.connectFromId)) {
         errors.push(`Operation ${i + 1} addNode connectFromId does not exist: ${op.connectFromId}.`)
       }
+      if (id) ids.add(id)
     }
 
     if (op.op === 'updateNode' || op.op === 'deleteNode' || op.op === 'moveNode') {
       if (!ids.has(op.id)) errors.push(`Operation ${i + 1} references missing node: ${op.id}.`)
-      if (op.op === 'deleteNode') ids.delete(op.id)
+      if (op.op === 'deleteNode') {
+        ids.delete(op.id)
+        for (const [edgeId, edge] of edgesById) {
+          if (edge.fromId === op.id || edge.toId === op.id) {
+            edgeIds.delete(edgeId)
+            edgePairs.delete(`${edge.fromId}->${edge.toId}`)
+            edgesById.delete(edgeId)
+          }
+        }
+      }
     }
 
     if (op.op === 'connectNodes') {
@@ -405,10 +419,42 @@ export function validateAiPatch(patch: AiPatch, index: CanvasIndex): PatchValida
       if (op.id && edgeIds.has(op.id)) errors.push(`Operation ${i + 1} edge id already exists: ${op.id}.`)
       if (op.fromId === op.toId) warnings.push(`Operation ${i + 1} connects a node to itself.`)
       if (op.id) edgeIds.add(op.id)
+      const edgeId = op.id ?? `operation-${i + 1}`
+      edgesById.set(edgeId, {
+        id: edgeId,
+        shapeId: '',
+        fromId: op.fromId,
+        toId: op.toId,
+        kind: op.kind ?? 'related',
+        label: op.label ?? op.kind ?? 'related',
+        createdAt: '',
+        updatedAt: '',
+      })
+      edgePairs.add(`${op.fromId}->${op.toId}`)
     }
 
-    if (op.op === 'disconnectNodes' && op.id && !edgeIds.has(op.id)) {
-      errors.push(`Operation ${i + 1} references missing edge: ${op.id}.`)
+    if (op.op === 'disconnectNodes') {
+      if (op.id) {
+        const edge = edgesById.get(op.id)
+        if (!edgeIds.has(op.id) || !edge) {
+          errors.push(`Operation ${i + 1} references missing edge: ${op.id}.`)
+        } else {
+          edgeIds.delete(op.id)
+          edgePairs.delete(`${edge.fromId}->${edge.toId}`)
+          edgesById.delete(op.id)
+        }
+      } else if (!edgePairs.has(`${op.fromId}->${op.toId}`)) {
+        errors.push(`Operation ${i + 1} references missing edge: ${op.fromId} -> ${op.toId}.`)
+      } else {
+        edgePairs.delete(`${op.fromId}->${op.toId}`)
+        for (const [edgeId, edge] of edgesById) {
+          if (edge.fromId === op.fromId && edge.toId === op.toId) {
+            edgeIds.delete(edgeId)
+            edgesById.delete(edgeId)
+            break
+          }
+        }
+      }
     }
   }
 
