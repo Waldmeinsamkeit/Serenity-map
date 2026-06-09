@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": ["../../../src/lib/utils/areShapesContentEqual.ts"],
-  "sourcesContent": ["import { TLShape } from '@tldraw/tlschema'\n\n/**\n * Checks if two shapes are equal by comparing their props and meta.\n * @param a - The first shape.\n * @param b - The second shape.\n * @returns True if the shapes are equal, false otherwise.\n */\nexport function areShapesContentEqual(a: TLShape, b: TLShape) {\n\treturn a.props === b.props && a.meta === b.meta\n}\n"],
-  "mappings": "AAQO,SAAS,sBAAsB,GAAY,GAAY;AAC7D,SAAO,EAAE,UAAU,EAAE,SAAS,EAAE,SAAS,EAAE;AAC5C;",
-  "names": []
-}

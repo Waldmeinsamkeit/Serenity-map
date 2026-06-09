@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": ["../../../src/lib/utils/keyboard.ts"],
-  "sourcesContent": ["import { tlenv } from '../globals/environment'\n\n/**\n * Checks if the accelerator key is pressed.\n * @param e - The event to check.\n * @returns True if the accelerator key is pressed, false otherwise.\n * @internal */\nexport function isAccelKey(e: { metaKey: boolean; ctrlKey: boolean }) {\n\treturn tlenv.isDarwin ? e.metaKey : e.ctrlKey || e.metaKey\n}\n"],
-  "mappings": "AAAA,SAAS,aAAa;AAOf,SAAS,WAAW,GAA2C;AACrE,SAAO,MAAM,WAAW,EAAE,UAAU,EAAE,WAAW,EAAE;AACpD;",
-  "names": []
-}
