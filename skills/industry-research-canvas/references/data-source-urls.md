@@ -18,6 +18,8 @@ Choose sources by evidence need:
 
 ## A-Share Sources
 
+For a fuller browser-collection catalog and AkShare function provenance, also read `references/a-share-financial-data-sources.md`.
+
 Primary evidence:
 
 - CNINFO announcements and disclosures: `https://www.cninfo.com.cn`

@@ -31,6 +31,7 @@ Do not start with company names. Rank value-chain layers first, then rank compan
 - **Canvas-ready output**: Produce a short human summary plus Mermaid and/or AI Patch operations.
 - **Learning conversation**: Ask one focused question per turn and move the user from story to system change to scarce layer to proof.
 - **Data-source selection**: Read `references/data-source-urls.md` before choosing provider URLs, public endpoints, or credentialed APIs.
+- **A-share data collection**: Read `references/a-share-financial-data-sources.md` when the task needs A-share financial websites, AkShare endpoint provenance, regulatory/policy sources, news/report leads, sentiment sources, or industry/commodity fallback sources.
 
 ## Resource Loading
 
@@ -42,6 +43,7 @@ Load only what the task needs:
 - `references/risk-and-compliance.md`: investment research boundaries and high-risk situations.
 - `references/output-style-and-language.md`: answer shapes, Chinese style, and table guidance.
 - `references/data-source-urls.md`: provider-oriented source URLs for filings, market data, research reports, news, search, and extraction.
+- `references/a-share-financial-data-sources.md`: A-share financial information sources, including AkShare function provenance, official regulators, news/research leads, sentiment sources, paid vendor slots, and industry/commodity fallbacks.
 - `assets/thesis-template.md`: structured memo template.
 - `assets/canvas-patch-template.json`: AI Patch skeleton for Serenity canvas.
 - `assets/bottleneck-scorecard.json`: scoring template for bottleneck/company ranking.
