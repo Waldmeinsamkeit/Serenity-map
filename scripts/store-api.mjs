@@ -91,7 +91,7 @@ async function saveCanvas(payload) {
 function safeHistoryPart(value) {
   return String(value ?? 'page')
     .trim()
-    .replaceAll(/[^a-zA-Z0-9_.:-]+/g, '-')
+    .replaceAll(/[^a-zA-Z0-9_.-]+/g, '-')
     .replaceAll(/^-+|-+$/g, '') || 'page'
 }
 

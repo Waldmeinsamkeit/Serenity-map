@@ -219,6 +219,37 @@ export function syncLearningCardText(editor: Editor) {
   if (updates.length) editor.updateShapes(updates)
 }
 
+export function syncLearningCardDataFromText(editor: Editor) {
+  const updates = getLearningShapes(editor).cards
+    .map((shape) => {
+      const data = getCardData(shape)
+      if (!data) return null
+
+      const currentText = renderPlaintextFromRichText(editor, shape.props.richText).trim()
+      if (!currentText) return null
+      if (currentText === formatCardText(data).trim()) return null
+
+      const [titleLine = '', ...summaryLines] = currentText.split(/\r?\n/)
+      const nextTitle = titleLine.trim()
+      const nextSummary = summaryLines.join('\n').trim()
+      if (!nextTitle) return null
+
+      return {
+        id: shape.id,
+        type: 'geo' as const,
+        meta: cardMeta({
+          ...data,
+          title: nextTitle,
+          summary: nextSummary,
+          updatedAt: nowIso(),
+        }) as any,
+      }
+    })
+    .filter(Boolean)
+
+  if (updates.length) editor.updateShapes(updates)
+}
+
 export function connectLearningCards(
   editor: Editor,
   fromShapeId: TLShapeId,

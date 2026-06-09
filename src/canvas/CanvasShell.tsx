@@ -31,6 +31,7 @@ import {
   getCardData,
   getNextBranchPosition,
   getSelectedLearningCards,
+  syncLearningCardDataFromText,
   syncLearningCardText,
   updateLearningCard,
 } from '../model/learningGraph'
@@ -141,6 +142,21 @@ function hasAnyLearningCard(editor: Editor) {
     : false
 }
 
+function isTextInputActive(editor?: Editor | null) {
+  const activeElement = document.activeElement
+  if (
+    activeElement instanceof HTMLInputElement ||
+    activeElement instanceof HTMLTextAreaElement ||
+    activeElement instanceof HTMLSelectElement
+  ) {
+    return true
+  }
+  if (activeElement instanceof HTMLElement && activeElement.isContentEditable) return true
+
+  const maybeEditor = editor as unknown as { getEditingShapeId?: () => unknown }
+  return Boolean(maybeEditor?.getEditingShapeId?.())
+}
+
 export function CanvasShell() {
   const [editor, setEditor] = useState<Editor | null>(null)
   const saveTimerRef = useRef<number | null>(null)
@@ -203,7 +219,17 @@ export function CanvasShell() {
         updateSyncStatus(mountedEditor, 'dirty', '有新修改，等待当前保存完成')
         return
       }
+      if (isTextInputActive(mountedEditor)) {
+        updateSyncStatus(mountedEditor, 'dirty', '正在输入，暂停自动同步')
+        if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = window.setTimeout(() => {
+          saveTimerRef.current = null
+          saveSnapshot()
+        }, 1000)
+        return
+      }
 
+      syncLearningCardDataFromText(mountedEditor)
       const snapshot = mountedEditor.getSnapshot()
       const health = inspectSerenitySnapshot(snapshot)
       if (!health.ok || !isSaveableSerenitySnapshot(snapshot)) {
@@ -285,19 +311,30 @@ export function CanvasShell() {
     })()
 
     mountedEditor.store.listen(() => {
-      syncLearningCardText(mountedEditor)
-      refreshInspector(mountedEditor)
+      const textInputActive = isTextInputActive(mountedEditor)
+      if (!textInputActive) {
+        syncLearningCardDataFromText(mountedEditor)
+        syncLearningCardText(mountedEditor)
+        refreshInspector(mountedEditor)
+      }
       if (!canSaveSnapshotRef.current) return
-      updateSyncStatus(mountedEditor, 'dirty', '有未保存更改，等待自动同步')
+      updateSyncStatus(
+        mountedEditor,
+        'dirty',
+        textInputActive ? '正在输入，暂停自动同步' : '有未保存更改，等待自动同步'
+      )
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
       saveTimerRef.current = window.setTimeout(() => {
         saveTimerRef.current = null
         saveSnapshot()
-      }, 800)
+      }, textInputActive ? 1000 : 800)
     })
     setTimeout(() => {
-      syncLearningCardText(mountedEditor)
-      refreshInspector(mountedEditor)
+      if (!isTextInputActive(mountedEditor)) {
+        syncLearningCardDataFromText(mountedEditor)
+        syncLearningCardText(mountedEditor)
+        refreshInspector(mountedEditor)
+      }
     }, 0)
     manualSaveRef.current = saveSnapshot
   }, [refreshInspector, updateSyncStatus])
